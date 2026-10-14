@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>图片压缩</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<style>
+  .page { max-width: 860px; margin: 0 auto; padding: calc(14px + env(safe-area-inset-top)) 16px 64px; }
+  .head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .head h1 { margin: 0; font-size: 1.4rem; }
+
+  .box { padding: 16px; margin-bottom: 20px; background: var(--paper); border: 2px solid var(--edge); border-radius: 6px; box-shadow: 4px 4px 0 var(--edge); }
+  .box h2 { margin: 0 0 12px; font-size: 1rem; }
+
+  .drop { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 16px; margin-bottom: 20px; text-align: center;
+    border: 3px dashed var(--edge); border-radius: 8px; background: var(--paper); transition: background .1s; }
+  .drop.over { background: var(--yellow); color: var(--on-yellow); }
+  .drop .big { margin: 0; font-size: 1.15rem; font-weight: 700; }
+  .drop .sub { margin: 0 0 8px; color: var(--ink-2); font-size: .92rem; }
+  .drop.over .sub { color: var(--on-yellow); }
+
+  .row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+  .row:last-child { margin-bottom: 0; }
+  .row > .k { flex: none; width: 4.4em; font-size: .9rem; font-weight: 600; color: var(--ink-2); }
+  .row .seg button { white-space: nowrap; padding: 0 14px; }
+  .row input[type="range"] { flex: 1 1 160px; min-width: 0; height: 32px; accent-color: var(--yellow); }
+  .row output { flex: none; min-width: 2.6em; text-align: right; font-family: var(--mono); font-size: .88rem; color: var(--ink-2); }
+  .row .field { width: auto; min-width: 0; }
+  #kb { width: 7.5em; }
+  .chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+  .chips .btn { min-height: 36px; padding: 0 12px; font-size: .88rem; box-shadow: 0 2px 0 var(--edge); }
+  .chk { display: inline-flex; align-items: center; gap: 10px; min-height: 40px; font-size: .95rem; cursor: pointer; }
+  .chk input { width: 20px; height: 20px; }
+  .note { margin: 4px 0 0; color: var(--ink-2); font-size: .88rem; }
+
+  .bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+  #sum { flex: 1 1 220px; font-size: .95rem; }
+  #sum b { font-weight: 800; }
+  #list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .item { display: flex; align-items: center; gap: 12px; padding: 10px; border: 2px solid var(--line); border-radius: 6px; background: var(--bg); }
+  .th { flex: none; width: 56px; height: 56px; border-radius: 4px; object-fit: cover; border: 1px solid var(--line);
+    background: repeating-conic-gradient(#d4dae0 0 25%, #fff 0 50%) 0 0 / 12px 12px; }
+  .th.ph { display: block; }
+  .main { flex: 1 1 auto; min-width: 0; }
+  .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meta { margin-top: 2px; font-size: .88rem; color: var(--ink-2); word-break: break-word; }
+  .badge { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; font-weight: 700; font-size: .82rem; background: var(--teal); color: #fff; }
+  .badge.keep { background: var(--ink-2); }
+  .badge.up { background: var(--red); }
+  .meta.bad { color: var(--red); }
+  .spin { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; border: 2px solid var(--line); border-top-color: var(--ink); border-radius: 50%; animation: sp .8s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .acts { flex: none; display: flex; gap: 8px; }
+  @media (max-width: 560px) {
+    .item { flex-wrap: wrap; }
+    .main { flex: 1 1 calc(100% - 72px); }
+    .acts { width: 100%; justify-content: flex-end; }
+  }
+
+  #toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 12; transform: translateX(-50%);
+    padding: 8px 16px; border-radius: 999px; background: var(--ink); color: var(--bg); font-weight: 600; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="head">
+    <a class="back" href="../../">‹ 工具箱</a>
+    <h1>图片压缩</h1>
+  </div>
+
+  <div class="drop" id="drop">
+    <p class="big">把图片拖到这里，也可以直接粘贴</p>
+    <p class="sub">图片只在你的浏览器里处理，不会上传到任何地方。</p>
+    <button type="button" class="btn btn-primary" id="pick">选择图片</button>
+  </div>
+  <input type="file" id="file" accept="image/*" multiple hidden>
+
+  <section class="box" aria-label="压缩设置">
+    <h2>压缩设置</h2>
+    <div class="row"><span class="k">输出格式</span>
+      <div class="seg" id="fmt" role="group" aria-label="输出格式">
+        <button type="button" data-v="original">原格式</button>
+        <button type="button" data-v="jpeg">JPEG</button>
+        <button type="button" data-v="webp" id="fmtWebp">WebP</button>
+        <button type="button" data-v="png">PNG</button>
+      </div>
+    </div>
+    <div class="row"><span class="k">压缩方式</span>
+      <div class="seg" id="mode" role="group" aria-label="压缩方式">
+        <button type="button" data-v="quality">按质量</button>
+        <button type="button" data-v="target">按目标大小</button>
+      </div>
+    </div>
+    <div class="row" id="qRow"><span class="k">质量</span>
+      <input type="range" id="q" min="30" max="100" step="1" aria-label="质量"><output id="qO"></output>
+    </div>
+    <div class="row" id="tRow"><span class="k">不超过</span>
+      <input type="number" id="kb" class="field" min="10" max="20000" step="10" inputmode="numeric" aria-label="目标大小，单位 KB"> <span>KB</span>
+      <span class="chips" id="kbChips"></span>
+    </div>
+    <div class="row"><span class="k">最长边</span>
+      <select id="side" class="field" aria-label="最长边">
+        <option value="0">不缩小</option>
+        <option value="3840">3840 px</option>
+        <option value="2560">2560 px</option>
+        <option value="1920">1920 px</option>
+        <option value="1280">1280 px</option>
+        <option value="1080">1080 px</option>
+        <option value="800">800 px</option>
+      </select>
+    </div>
+    <div class="row"><label class="chk"><input type="checkbox" id="keep"> 压缩后反而变大时，保留原图</label></div>
+    <p class="note" id="note"></p>
+  </section>
+
+  <section class="box" id="results" hidden aria-label="处理结果">
+    <div class="bar">
+      <div id="sum" role="status"></div>
+      <button type="button" class="btn btn-primary" id="zip" disabled>全部打包下载</button>
+      <button type="button" class="btn" id="clear">清空</button>
+    </div>
+    <ul id="list"></ul>
+  </section>
+</div>
+<div id="toast" hidden></div>
+
+<script src="../../assets/common.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = TB.$, $$ = TB.$$, esc = TB.esc;
+
+  /* ---------- 设置 ---------- */
+  const DEF = { fmt: 'original', mode: 'quality', q: 80, kb: 500, side: 0, keep: true };
+  const cfg = Object.assign({}, DEF, TB.store.get('img.cfg', {}));
+  const num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v)) ? Math.min(hi, Math.max(lo, Math.round(v))) : d;
+  cfg.fmt = ['original', 'jpeg', 'webp', 'png'].indexOf(cfg.fmt) !== -1 ? cfg.fmt : 'original';
+  cfg.mode = cfg.mode === 'target' ? 'target' : 'quality';
+  cfg.q = num(cfg.q, 30, 100, DEF.q);
+  cfg.kb = num(cfg.kb, 10, 20000, DEF.kb);
+  cfg.side = [0, 3840, 2560, 1920, 1280, 1080, 800].indexOf(cfg.side) !== -1 ? cfg.side : 0;
+  cfg.keep = cfg.keep !== false;
+  const save = () => TB.store.set('img.cfg', cfg);
+
+  const WEBP = (() => { try { const c = document.createElement('canvas'); c.width = c.height = 1; return c.toDataURL('image/webp').indexOf('data:image/webp') === 0; } catch (e) { return false; } })();
+  if (!WEBP) { $('#fmtWebp').hidden = true; if (cfg.fmt === 'webp') cfg.fmt = 'original'; }
+
+  /* ---------- 工具函数 ---------- */
+  const fmtSize = n => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
+  const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+  const stem = name => name.replace(/\.[^.]+$/, '') || 'image';
+
+  function toast(t) {
+    const el = $('#toast');
+    el.textContent = t; el.hidden = false;
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => { el.hidden = true; }, 2200);
+  }
+
+  /* ---------- 状态 ---------- */
+  const S = { files: [], gen: 0, id: 0 };
+
+  function outType(f) {
+    let t;
+    if (cfg.fmt === 'original') {
+      t = { 'image/jpeg': 'image/jpeg', 'image/png': 'image/png', 'image/webp': 'image/webp', 'image/gif': 'image/png' }[f.file.type] || 'image/jpeg';
+    } else {
+      t = { jpeg: 'image/jpeg', webp: 'image/webp', png: 'image/png' }[cfg.fmt];
+    }
+    if (t === 'image/webp' && !WEBP) t = 'image/jpeg';
+    return t;
+  }
+
+  /* ---------- 解码与编码 ---------- */
+  async function decode(file) {
+    try {
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      return { src: bmp, width: bmp.width, height: bmp.height, close() { bmp.close(); } };
+    } catch (e) {
+      const url = URL.createObjectURL(file);
+      try {
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        return { src: img, width: img.naturalWidth, height: img.naturalHeight, close() { URL.revokeObjectURL(url); } };
+      } catch (e2) {
+        URL.revokeObjectURL(url);
+        throw new Error('这个文件打不开，可能不是图片，或浏览器不支持这种格式');
+      }
+    }
+  }
+
+  function draw(d, w, h, type) {
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const x = cv.getContext('2d');
+    if (type === 'image/jpeg') { x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); }   // JPEG 没有透明，垫白底
+    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+    x.drawImage(d.src, 0, 0, w, h);
+    return cv;
+  }
+
+  function encode(d, scale, type, q) {
+    const w = Math.max(1, Math.round(d.width * scale)), h = Math.max(1, Math.round(d.height * scale));
+    const cv = draw(d, w, h, type);
+    return new Promise((res, rej) => {
+      try {
+        cv.toBlob(b => {
+          cv.width = cv.height = 0;
+          if (!b) rej(new Error('图片太大，浏览器处理不了。请把“最长边”调小再试'));
+          else if (b.type !== type) rej(new Error('这个浏览器不支持输出 ' + type.replace('image/', '').toUpperCase() + '，换个输出格式试试'));
+          else res({ blob: b, w: w, h: h });
+        }, type, q);
+      } catch (e) { rej(new Error('图片太大，浏览器处理不了。请把“最长边”调小再试')); }
+    });
+  }
+
+  async function makeThumb(d) {
+    const s = 112 / Math.max(d.width, d.height), w = Math.max(1, Math.round(d.width * Math.min(1, s))), h = Math.max(1, Math.round(d.height * Math.min(1, s)));
+    const cv = draw(d, w, h, 'image/png');
+    const url = cv.toDataURL('image/png');
+    cv.width = cv.height = 0;
+    return url;
+  }
+
+  // 按目标大小压：先在当前尺寸下二分找最高质量，仍超标就缩小 15% 再来
+  async function toTarget(d, scale, type, limit) {
+    let sc = scale, last = null;
+    for (let round = 0; round < 10; round++) {
+      if (type === 'image/png') {
+        last = await encode(d, sc, type);
+        if (last.blob.size <= limit) return { r: last, met: true };
+      } else {
+        let best = await encode(d, sc, type, 0.95);
+        if (best.blob.size <= limit) return { r: best, met: true };
+        const low = await encode(d, sc, type, 0.3);
+        last = low;
+        if (low.blob.size <= limit) {
+          best = low;
+          let lo = 0.3, hi = 0.95;
+          for (let i = 0; i < 6; i++) {
+            const mid = (lo + hi) / 2, t = await encode(d, sc, type, mid);
+            if (t.blob.size <= limit) { best = t; lo = mid; } else hi = mid;
+          }
+          return { r: best, met: true };
+        }
+      }
+      if (Math.min(d.width, d.height) * sc * 0.85 < 120) break;
+      sc *= 0.85;
+    }
+    return { r: last, met: false };
+  }
+
+  async function compress(f, token) {
+    const d = await decode(f.file);
+    try {
+      if (!f.thumb) f.thumb = await makeThumb(d);
+      const type = outType(f);
+      const scale = cfg.side ? Math.min(1, cfg.side / Math.max(d.width, d.height)) : 1;
+      let r, met = true;
+      if (cfg.mode === 'target') {
+        const t = await toTarget(d, scale, type, cfg.kb * 1024);
+        r = t.r; met = t.met;
+      } else {
+        r = await encode(d, scale, type, cfg.q / 100);
+      }
+      if (token !== S.gen) return;
+
+      let blob = r.blob, w = r.w, h = r.h, kept = false, msg = '';
+      const sameFmt = type === f.file.type, resized = scale < 1;
+      if (cfg.keep && sameFmt && !resized) {
+        const limit = cfg.mode === 'target' ? cfg.kb * 1024 : Infinity;
+        if (blob.size >= f.file.size || (cfg.mode === 'target' && f.file.size <= limit)) {
+          blob = f.file; w = d.width; h = d.height; kept = true;
+          if (cfg.mode === 'target' && f.file.size > limit) kept = false;
+        }
+      }
+      if (!met && !kept) msg = '已压到尽量小，仍大于目标大小';
+      f.srcW = d.width; f.srcH = d.height;
+      f.out = { blob: blob, w: w, h: h, kept: kept, type: kept ? f.file.type : type, msg: msg };
+      f.outName = kept ? f.file.name : stem(f.file.name) + '-compressed.' + (EXT[type] || 'jpg');
+      f.url = URL.createObjectURL(blob);
+      f.status = 'done';
+    } finally {
+      d.close();
+    }
+  }
+
+  /* ---------- 队列 ---------- */
+  async function run() {
+    const token = ++S.gen;
+    for (const f of S.files.slice()) {
+      if (token !== S.gen) return;
+      if (f.status === 'done' || f.status === 'err') continue;
+      f.status = 'work'; renderRow(f);
+      try {
+        await compress(f, token);
+      } catch (e) {
+        if (token !== S.gen) return;
+        f.status = 'err'; f.msg = e && e.message ? e.message : '处理失败';
+      }
+      if (token !== S.gen) return;
+      renderRow(f);
+      renderSummary();
+    }
+    renderSummary();
+  }
+
+  function resetAll() {
+    S.files.forEach(f => {
+      if (f.url) URL.revokeObjectURL(f.url);
+      f.url = null; f.out = null; f.status = 'wait'; f.msg = '';
+    });
+    renderList();
+    run();
+  }
+  let timer = 0;
+  const later = () => { clearTimeout(timer); timer = setTimeout(resetAll, 250); };
+
+  /* ---------- 渲染 ---------- */
+  function rowHtml(f) {
+    const th = f.thumb ? '<img class="th" alt="" src="' + f.thumb + '">' : '<span class="th ph"></span>';
+    let meta, cls = 'meta', acts = '';
+    if (f.status === 'wait') meta = fmtSize(f.file.size) + ' · 排队中';
+    else if (f.status === 'work') meta = '<span class="spin"></span>压缩中…';
+    else if (f.status === 'err') { meta = esc(f.msg); cls += ' bad'; }
+    else {
+      const o = f.out, pct = Math.round((1 - o.blob.size / f.file.size) * 100);
+      const dim = (o.w !== f.srcW || o.h !== f.srcH) ? f.srcW + '×' + f.srcH + ' → ' + o.w + '×' + o.h : o.w + '×' + o.h;
+      let badge = pct >= 1 ? '<span class="badge">−' + pct + '%</span>' : (o.kept ? '<span class="badge keep">保留原图</span>' : (pct < 0 ? '<span class="badge up">+' + (-pct) + '%</span>' : '<span class="badge keep">0%</span>'));
+      if (o.kept && pct < 1) badge = '<span class="badge keep">已是最优，保留原图</span>';
+      meta = dim + ' · ' + fmtSize(f.file.size) + ' → <b>' + fmtSize(o.blob.size) + '</b>' + badge + (o.msg ? '<br>' + esc(o.msg) : '');
+      acts = '<button type="button" class="btn btn-sm" data-act="dl">下载</button>';
+    }
+    return th + '<div class="main"><div class="nm" title="' + esc(f.file.name) + '">' + esc(f.file.name) + '</div><div class="' + cls + '">' + meta + '</div></div>' +
+      '<div class="acts">' + acts + '<button type="button" class="btn btn-sm" data-act="rm" aria-label="移除 ' + esc(f.file.name) + '">移除</button></div>';
+  }
+
+  function renderRow(f) {
+    const li = $('#list [data-id="' + f.id + '"]');
+    if (li) li.innerHTML = rowHtml(f);
+  }
+
+  function renderList() {
+    $('#results').hidden = S.files.length === 0;
+    $('#list').innerHTML = S.files.map(f => '<li class="item" data-id="' + f.id + '">' + rowHtml(f) + '</li>').join('');
+    renderSummary();
+  }
+
+  function renderSummary() {
+    const done = S.files.filter(f => f.status === 'done');
+    const pending = S.files.filter(f => f.status === 'wait' || f.status === 'work').length;
+    const orig = done.reduce((a, f) => a + f.file.size, 0), now = done.reduce((a, f) => a + f.out.blob.size, 0);
+    let s = '共 ' + S.files.length + ' 张';
+    if (done.length) {
+      const pct = orig ? Math.round((1 - now / orig) * 100) : 0;
+      s += '，' + fmtSize(orig) + ' → <b>' + fmtSize(now) + '</b>（' + (pct >= 0 ? '节省 ' + pct + '%' : '变大 ' + (-pct) + '%') + '）';
+    }
+    if (pending) s += '，还有 ' + pending + ' 张在处理';
+    $('#sum').innerHTML = s;
+    $('#zip').disabled = done.length === 0;
+  }
+
+  function syncUI() {
+    $$('#fmt button').forEach(b => b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === cfg.fmt)));
+    $$('#mode button').forEach(b => b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === cfg.mode)));
+    $('#qRow').hidden = cfg.mode !== 'quality';
+    $('#tRow').hidden = cfg.mode !== 'target';
+    $('#q').value = cfg.q; $('#qO').textContent = cfg.q;
+    $('#kb').value = cfg.kb;
+    $('#side').value = String(cfg.side);
+    $('#keep').checked = cfg.keep;
+    $$('#kbChips .btn').forEach(b => b.setAttribute('aria-pressed', String(+b.getAttribute('data-kb') === cfg.kb)));
+    let note = '';
+    if (cfg.fmt === 'png') note = 'PNG 是无损格式，质量设置不起作用；想让 PNG 变小，只能缩小尺寸，或改用 JPEG / WebP。';
+    else if (cfg.fmt === 'original') note = '原本是 PNG 的图片同样不受质量影响，需要缩小尺寸，或转成 JPEG / WebP 才会明显变小。';
+    else if (cfg.fmt === 'jpeg') note = 'JPEG 不支持透明，透明部分会变成白色。';
+    $('#note').textContent = note;
+  }
+
+  /* ---------- 添加文件 ---------- */
+  const IMG_EXT = /\.(jpe?g|png|webp|gif|bmp|avif|heic|heif|tiff?)$/i;
+  function addFiles(list) {
+    const all = Array.from(list || []);
+    const ok = all.filter(f => (f.type && f.type.indexOf('image/') === 0) || IMG_EXT.test(f.name));
+    if (all.length && !ok.length) { toast('这不是图片文件'); return; }
+    if (ok.length < all.length) toast('已忽略 ' + (all.length - ok.length) + ' 个非图片文件');
+    ok.forEach(file => S.files.push({ id: ++S.id, file: file, status: 'wait', msg: '', thumb: null, out: null, url: null }));
+    if (!ok.length) return;
+    renderList();
+    run();
+  }
+
+  $('#pick').addEventListener('click', () => $('#file').click());
+  $('#file').addEventListener('change', e => { addFiles(e.target.files); e.target.value = ''; });
+
+  const drop = $('#drop');
+  let dragDepth = 0;
+  window.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; drop.classList.add('over'); });
+  window.addEventListener('dragover', e => { e.preventDefault(); });
+  window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) drop.classList.remove('over'); });
+  window.addEventListener('drop', e => {
+    e.preventDefault(); dragDepth = 0; drop.classList.remove('over');
+    if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
+  });
+  document.addEventListener('paste', e => {
+    const fs = [];
+    Array.from((e.clipboardData && e.clipboardData.items) || []).forEach(it => { if (it.kind === 'file') { const f = it.getAsFile(); if (f) fs.push(f); } });
+    if (fs.length) { e.preventDefault(); addFiles(fs.map((f, i) => (f.name && f.name !== 'image.png') ? f : new File([f], '粘贴的图片' + (S.id + i + 1) + '.' + (EXT[f.type] || 'png'), { type: f.type }))); }
+  });
+
+  /* ---------- 设置事件 ---------- */
+  $('#fmt').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { cfg.fmt = b.getAttribute('data-v'); save(); syncUI(); later(); } });
+  $('#mode').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { cfg.mode = b.getAttribute('data-v'); save(); syncUI(); later(); } });
+  $('#q').addEventListener('input', e => { cfg.q = +e.target.value; $('#qO').textContent = cfg.q; save(); later(); });
+  $('#kb').addEventListener('input', e => {
+    const v = parseInt(e.target.value, 10);
+    if (!isFinite(v) || v < 10) return;
+    cfg.kb = Math.min(20000, v); save(); syncUI(); later();
+  });
+  $('#kbChips').innerHTML = [100, 200, 500, 1024, 2048].map(k => '<button type="button" class="btn" data-kb="' + k + '">' + (k >= 1024 ? (k / 1024) + ' MB' : k + ' KB') + '</button>').join('');
+  $('#kbChips').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { cfg.kb = +b.getAttribute('data-kb'); save(); syncUI(); later(); } });
+  $('#side').addEventListener('change', e => { cfg.side = +e.target.value; save(); later(); });
+  $('#keep').addEventListener('change', e => { cfg.keep = e.target.checked; save(); later(); });
+
+  /* ---------- 结果操作 ---------- */
+  function saveAs(blob, name) {
+    const a = document.createElement('a');
+    const url = blob === null ? name.url : URL.createObjectURL(blob);
+    a.href = url; a.download = blob === null ? name.name : name;
+    document.body.appendChild(a); a.click(); a.remove();
+    if (blob !== null) setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  $('#list').addEventListener('click', e => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    const li = b.closest('li'), id = +li.getAttribute('data-id');
+    const i = S.files.findIndex(f => f.id === id);
+    if (i < 0) return;
+    const f = S.files[i];
+    if (b.getAttribute('data-act') === 'dl') { if (f.url) saveAs(null, { url: f.url, name: f.outName }); }
+    else {
+      if (f.url) URL.revokeObjectURL(f.url);
+      S.files.splice(i, 1);
+      li.remove();
+      $('#results').hidden = S.files.length === 0;
+      renderSummary();
+    }
+  });
+
+  $('#clear').addEventListener('click', () => {
+    S.gen++;
+    S.files.forEach(f => { if (f.url) URL.revokeObjectURL(f.url); });
+    S.files = [];
+    renderList();
+  });
+
+  /* ---------- 打包 zip（只存不压，图片本身已压过） ---------- */
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+
+  async function makeZip(items) {
+    const enc = new TextEncoder(), parts = [], central = [];
+    let offset = 0;
+    const d = new Date();
+    const dt = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const dd = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    for (const it of items) {
+      const data = new Uint8Array(await it.blob.arrayBuffer()), name = enc.encode(it.name), crc = crc32(data);
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+      lh.setUint16(10, dt, true); lh.setUint16(12, dd, true); lh.setUint32(14, crc, true);
+      lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+      parts.push(lh.buffer, name, data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+      ch.setUint16(12, dt, true); ch.setUint16(14, dd, true); ch.setUint32(16, crc, true);
+      ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, name.length, true);
+      ch.setUint32(42, offset, true);
+      central.push(ch.buffer, name);
+      offset += 30 + name.length + data.length;
+    }
+    let csize = 0;
+    central.forEach(b => { csize += b.byteLength; });
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, items.length, true); end.setUint16(10, items.length, true);
+    end.setUint32(12, csize, true); end.setUint32(16, offset, true);
+    return new Blob(parts.concat(central, [end.buffer]), { type: 'application/zip' });
+  }
+
+  $('#zip').addEventListener('click', async () => {
+    const done = S.files.filter(f => f.status === 'done');
+    if (!done.length) return;
+    $('#zip').disabled = true;
+    try {
+      const seen = new Map(), items = [];
+      done.forEach(f => {
+        let name = f.outName;
+        const n = seen.get(name.toLowerCase()) || 0;
+        seen.set(name.toLowerCase(), n + 1);
+        if (n) name = name.replace(/(\.[^.]+)?$/, ' (' + (n + 1) + ')$1');
+        items.push({ name: name, blob: f.out.blob });
+      });
+      saveAs(await makeZip(items), 'compressed-images.zip');
+    } catch (e) {
+      toast('打包失败，可以改为逐张下载');
+    }
+    renderSummary();
+  });
+
+  /* ---------- 启动 ---------- */
+  syncUI();
+})();
+</script>
+</body>
+</html>

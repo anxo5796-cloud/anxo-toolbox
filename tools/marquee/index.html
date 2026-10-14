@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>滚动字幕</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #000; overscroll-behavior: none; scrollbar-width: none; }
+  html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
+  body { -webkit-user-select: none; user-select: none; touch-action: manipulation; color: #EAF0F5; }
+  /* 看不见的长页面：手机浏览器上下滑动时，地址栏才会自动收起 */
+  #spacer { height: 4000vh; width: 1px; pointer-events: none; }
+
+  #cv { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: pointer; }
+  /* LED 点阵：给画布盖一层圆点遮罩，文字从圆点里透出来 */
+  #cv.led {
+    --dot: 8px;
+    -webkit-mask-image: radial-gradient(circle closest-side, #000 72%, transparent 100%);
+    mask-image: radial-gradient(circle closest-side, #000 72%, transparent 100%);
+    -webkit-mask-size: var(--dot) var(--dot);
+    mask-size: var(--dot) var(--dot);
+  }
+
+  .pill {
+    font: inherit; font-size: .95rem; font-weight: 600;
+    min-height: 40px; padding: 0 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #EAF0F5; background: rgba(255,255,255,.1);
+    border: 1.5px solid rgba(255,255,255,.3); border-radius: 999px;
+    text-decoration: none; cursor: pointer;
+  }
+  .pill:active { background: rgba(255,255,255,.2); }
+  .pill[aria-pressed="true"] { background: #F5C518; border-color: #F5C518; color: #17212B; }
+
+  .bar {
+    position: fixed; inset: 0 0 auto 0; z-index: 4;
+    display: flex; justify-content: space-between; gap: 10px;
+    padding: calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 10px calc(12px + env(safe-area-inset-left));
+    pointer-events: none;
+  }
+  .bar > * { pointer-events: auto; background-color: rgba(0,0,0,.55); }
+
+  #panel {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 3;
+    max-height: 62vh; overflow: auto; overscroll-behavior: contain;
+    padding: 14px calc(16px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+    background: rgba(17,25,34,.97); border-top: 2px solid rgba(255,255,255,.2);
+  }
+  .p-grid { display: grid; gap: 16px 24px; grid-template-columns: 1fr; }
+  @media (min-width: 760px) { .p-grid { grid-template-columns: 1.1fr 1fr 1fr; } }
+
+  label.cap { display: block; margin-bottom: 6px; color: #9FB0BF; font-size: .88rem; }
+  #txt {
+    width: 100%; min-height: 84px; padding: 10px 12px; resize: vertical;
+    font: inherit; font-size: 1.05rem; color: #fff; background: #0C131A;
+    border: 1.5px solid rgba(255,255,255,.3); border-radius: 8px;
+    -webkit-user-select: text; user-select: text;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chips .pill { min-height: 32px; padding: 0 12px; font-size: .85rem; font-weight: 500; }
+
+  .row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; min-height: 40px; flex-wrap: wrap; }
+  .row > .k { flex: none; width: 3.4em; color: #9FB0BF; font-size: .9rem; }
+  .row .grp { display: inline-flex; gap: 6px; }
+  .row input[type="range"] { flex: 1 1 120px; min-width: 0; height: 32px; accent-color: #F5C518; }
+  .row output { flex: none; min-width: 2.6em; text-align: right; font-family: var(--mono); font-size: .85rem; color: #9FB0BF; }
+  .sw { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+  .sw button { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); cursor: pointer; }
+  .sw button[aria-pressed="true"] { box-shadow: 0 0 0 3px #17212B, 0 0 0 5px #fff; }
+  input[type="color"] { width: 38px; height: 32px; padding: 0; border: 0; background: none; cursor: pointer; }
+  .checks { gap: 18px; }
+  .checks label { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; cursor: pointer; }
+  .checks input { width: 20px; height: 20px; accent-color: #F5C518; }
+
+  .tip { margin: 0; color: #9FB0BF; font-size: .85rem; }
+  #toast {
+    position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 5;
+    transform: translateX(-50%); padding: 8px 16px; border-radius: 999px;
+    background: rgba(255,255,255,.9); color: #17212B; font-weight: 600; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="spacer" aria-hidden="true"></div>
+<canvas id="cv" aria-label="字幕显示区，点一下显示或隐藏设置"></canvas>
+
+<div class="bar" id="bar">
+  <a class="pill" href="../../">‹ 工具箱</a>
+  <button type="button" class="pill" id="full">全屏</button>
+</div>
+
+<section id="panel" aria-label="设置">
+  <div class="p-grid">
+    <div>
+      <label class="cap" for="txt">要显示的文字（静止模式下，换行就是分行）</label>
+      <textarea id="txt" maxlength="500" spellcheck="false"></textarea>
+      <div class="chips" id="recent"></div>
+    </div>
+
+    <div>
+      <div class="row"><span class="k">模式</span>
+        <span class="grp">
+          <button type="button" class="pill" id="mScroll">滚动</button>
+          <button type="button" class="pill" id="mStatic">静止</button>
+        </span>
+      </div>
+      <div class="row" id="rowDir"><span class="k">方向</span>
+        <span class="grp">
+          <button type="button" class="pill" id="dLeft">向左</button>
+          <button type="button" class="pill" id="dRight">向右</button>
+        </span>
+      </div>
+      <div class="row" id="rowSpeed"><span class="k">速度</span>
+        <input type="range" id="speed" min="40" max="600" step="10" aria-label="速度"><output id="speedO"></output>
+      </div>
+      <div class="row" id="rowSize"><span class="k">字号</span>
+        <input type="range" id="size" min="20" max="95" step="1" aria-label="字号"><output id="sizeO"></output>
+      </div>
+    </div>
+
+    <div>
+      <div class="row"><span class="k">文字</span><span class="sw" id="fgSw"></span><input type="color" id="fg" aria-label="自定义文字颜色"></div>
+      <div class="row"><span class="k">背景</span><span class="sw" id="bgSw"></span><input type="color" id="bg" aria-label="自定义背景颜色"></div>
+      <div class="row checks">
+        <label><input type="checkbox" id="led"> LED 点阵</label>
+        <label><input type="checkbox" id="blink"> 闪烁</label>
+        <label id="awakeRow"><input type="checkbox" id="awake"> 保持常亮</label>
+      </div>
+      <div class="row">
+        <button type="button" class="pill" id="pause">暂停</button>
+        <button type="button" class="pill" id="hide">收起设置</button>
+      </div>
+      <p class="tip" id="tip" hidden>手机上：上下滑动屏幕，可以收起或调出浏览器地址栏。</p>
+    </div>
+  </div>
+</section>
+
+<div id="toast" hidden></div>
+
+<script src="../../assets/common.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = TB.$;
+
+  const FONT = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif';
+  const FG = ['#FFD60A', '#FFFFFF', '#30D158', '#FF453A', '#64D2FF', '#FF6BB5'];
+  const BG = ['#000000', '#0A1A3A', '#1A0A0A', '#FFFFFF'];
+  const DEF = { text: '欢迎光临', mode: 'scroll', dir: -1, speed: 180, size: 55, fg: '#FFD60A', bg: '#000000', led: false, blink: false, awake: true };
+
+  /* ---------- 设置 ---------- */
+  const cfg = Object.assign({}, DEF, TB.store.get('marquee.cfg', {}));
+  const hex = (v, d) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v)) ? v : d;
+  const num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v)) ? Math.min(hi, Math.max(lo, v)) : d;
+  cfg.text = typeof cfg.text === 'string' ? cfg.text.slice(0, 500) : DEF.text;
+  cfg.mode = cfg.mode === 'static' ? 'static' : 'scroll';
+  cfg.dir = cfg.dir === 1 ? 1 : -1;
+  cfg.speed = num(cfg.speed, 40, 600, DEF.speed);
+  cfg.size = num(cfg.size, 20, 95, DEF.size);
+  cfg.fg = hex(cfg.fg, DEF.fg);
+  cfg.bg = hex(cfg.bg, DEF.bg);
+  cfg.led = !!cfg.led; cfg.blink = !!cfg.blink; cfg.awake = cfg.awake !== false;
+  const save = () => TB.store.set('marquee.cfg', cfg);
+
+  let recent = TB.store.get('marquee.recent', []);
+  if (!Array.isArray(recent)) recent = [];
+
+  /* ---------- 画布与布局 ---------- */
+  const cv = $('#cv'), ctx = cv.getContext('2d');
+  const panel = $('#panel');
+  let W = 0, H = 0, Hd = 0;          // 屏幕尺寸、面板之上可用于显示的高度
+  let ui = true, paused = false;
+  let x = 0, textW = 0, fontPx = 40;
+  let scrollText = ' ', lines = [''];
+
+  function resize() {
+    const d = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * d); cv.height = Math.round(H * d);
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    layout();
+  }
+
+  function resetX() { x = cfg.dir < 0 ? W : -textW; }
+
+  // 静止模式：找到能放下全部文字的最大字号，过长的行自动折行
+  function tokens(s) { return s.match(/[\x21-\x7E]+|\s|[\s\S]/gu) || []; }
+  function wrap(line, px, maxW) {
+    ctx.font = '800 ' + px + 'px ' + FONT;
+    const out = []; let cur = '';
+    tokens(line).forEach(t => {
+      const test = cur + t;
+      if (cur === '' || ctx.measureText(test).width <= maxW) { cur = test; }
+      else { out.push(cur.replace(/\s+$/, '')); cur = t.trim() === '' ? '' : t; }
+    });
+    if (cur !== '' || !out.length) out.push(cur.replace(/\s+$/, ''));
+    return out;
+  }
+  function layoutAt(px, maxW) {
+    const ls = []; let w = 0;
+    cfg.text.split(/\r?\n/).forEach(line => {
+      wrap(line, px, maxW).forEach(l => { ls.push(l); w = Math.max(w, ctx.measureText(l).width); });
+    });
+    return { ls: ls, w: w, h: ls.length * px * 1.2 };
+  }
+  function fitStatic() {
+    const maxW = W * 0.92, availH = Hd * 0.9;
+    let lo = 10, hi = Math.max(12, availH);
+    for (let i = 0; i < 18; i++) {
+      const mid = (lo + hi) / 2, r = layoutAt(mid, maxW);
+      if (r.w <= maxW && r.h <= availH) lo = mid; else hi = mid;
+    }
+    fontPx = lo;
+    lines = layoutAt(lo, maxW).ls;
+  }
+
+  function layout() {
+    Hd = Math.max(120, H - (ui ? panel.offsetHeight : 0));
+    if (cfg.mode === 'scroll') {
+      fontPx = Math.min(H * cfg.size / 100, Hd * 0.92);
+      ctx.font = '800 ' + fontPx + 'px ' + FONT;
+      scrollText = cfg.text.replace(/\s*\n\s*/g, '    ') || ' ';
+      textW = ctx.measureText(scrollText).width;
+      if (x < -textW || x > W) resetX();
+    } else {
+      fitStatic();
+    }
+    cv.style.setProperty('--dot', Math.max(4, Math.min(12, Math.round(fontPx / 14))) + 'px');
+    cv.classList.toggle('led', cfg.led);
+  }
+
+  /* ---------- 绘制与动画 ---------- */
+  function draw(now) {
+    ctx.fillStyle = cfg.bg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = cfg.blink && Math.floor(now / 500) % 2 === 1 ? 0.08 : 1;
+    ctx.fillStyle = cfg.fg;
+    ctx.textBaseline = 'middle';
+    ctx.font = '800 ' + fontPx + 'px ' + FONT;
+    if (cfg.mode === 'scroll') {
+      ctx.textAlign = 'left';
+      ctx.fillText(scrollText, x, Hd / 2);
+    } else {
+      ctx.textAlign = 'center';
+      const lh = fontPx * 1.2, y0 = Hd / 2 - (lines.length - 1) * lh / 2;
+      lines.forEach((l, i) => ctx.fillText(l, W / 2, y0 + i * lh));
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  let last = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    if (cfg.mode === 'scroll' && !paused) {
+      x += cfg.dir * cfg.speed * dt;
+      if (cfg.dir < 0 && x < -textW) x = W;
+      else if (cfg.dir > 0 && x > W) x = -textW;
+    }
+    draw(now);
+  }
+
+  /* ---------- 界面同步 ---------- */
+  function toast(t) {
+    const el = $('#toast');
+    el.textContent = t; el.hidden = false;
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => { el.hidden = true; }, 1800);
+  }
+
+  function renderSwatches(id, list, key, inputId) {
+    $('#' + id).innerHTML = list.map(c =>
+      '<button type="button" data-c="' + c + '" style="background:' + c + '" aria-label="颜色 ' + c + '" aria-pressed="' + (cfg[key].toLowerCase() === c.toLowerCase()) + '"></button>').join('');
+    $('#' + inputId).value = cfg[key];
+  }
+
+  function renderRecent() {
+    $('#recent').innerHTML = recent.map((t, i) => {
+      const s = Array.from(t.replace(/\s+/g, ' '));
+      const label = s.length > 12 ? s.slice(0, 12).join('') + '…' : s.join('');
+      return '<button type="button" class="pill" data-i="' + i + '">' + TB.esc(label) + '</button>';
+    }).join('');
+  }
+
+  function sync() {
+    const scroll = cfg.mode === 'scroll';
+    $('#mScroll').setAttribute('aria-pressed', String(scroll));
+    $('#mStatic').setAttribute('aria-pressed', String(!scroll));
+    $('#dLeft').setAttribute('aria-pressed', String(cfg.dir < 0));
+    $('#dRight').setAttribute('aria-pressed', String(cfg.dir > 0));
+    ['#rowDir', '#rowSpeed', '#rowSize', '#pause'].forEach(s => { $(s).hidden = !scroll; });
+    $('#speed').value = cfg.speed; $('#speedO').textContent = cfg.speed;
+    $('#size').value = cfg.size; $('#sizeO').textContent = cfg.size + '%';
+    $('#led').checked = cfg.led; $('#blink').checked = cfg.blink; $('#awake').checked = cfg.awake;
+    $('#pause').textContent = paused ? '继续' : '暂停';
+    renderSwatches('fgSw', FG, 'fg', 'fg');
+    renderSwatches('bgSw', BG, 'bg', 'bg');
+  }
+
+  function setUI(v) {
+    ui = v;
+    panel.hidden = !v;
+    $('#bar').hidden = !v;
+    layout();
+    if (!v) toast('点一下屏幕，调出设置');
+  }
+
+  /* ---------- 事件 ---------- */
+  cv.addEventListener('click', () => setUI(!ui));
+  $('#hide').addEventListener('click', () => setUI(false));
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', resize);
+  if (window.ResizeObserver) new ResizeObserver(() => { if (ui) layout(); }).observe(panel);
+
+  $('#txt').addEventListener('input', e => {
+    cfg.text = e.target.value; save(); layout();
+    if (cfg.mode === 'scroll') resetX();
+  });
+  $('#txt').addEventListener('change', e => {
+    const t = e.target.value.trim();
+    if (!t) return;
+    recent = [t].concat(recent.filter(r => r !== t)).slice(0, 8);
+    TB.store.set('marquee.recent', recent);
+    renderRecent();
+  });
+  $('#recent').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    cfg.text = recent[+b.getAttribute('data-i')] || cfg.text;
+    $('#txt').value = cfg.text; save(); layout();
+    if (cfg.mode === 'scroll') resetX();
+  });
+
+  function setMode(m) { cfg.mode = m; save(); sync(); layout(); if (m === 'scroll') resetX(); }
+  $('#mScroll').addEventListener('click', () => setMode('scroll'));
+  $('#mStatic').addEventListener('click', () => setMode('static'));
+  function setDir(d) { cfg.dir = d; save(); sync(); resetX(); }
+  $('#dLeft').addEventListener('click', () => setDir(-1));
+  $('#dRight').addEventListener('click', () => setDir(1));
+
+  $('#speed').addEventListener('input', e => { cfg.speed = +e.target.value; $('#speedO').textContent = cfg.speed; save(); });
+  $('#size').addEventListener('input', e => { cfg.size = +e.target.value; $('#sizeO').textContent = cfg.size + '%'; save(); layout(); });
+
+  function colorHandlers(swId, inputId, key) {
+    $('#' + swId).addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      cfg[key] = b.getAttribute('data-c'); save(); sync();
+    });
+    $('#' + inputId).addEventListener('input', e => { cfg[key] = e.target.value; save(); sync(); });
+  }
+  colorHandlers('fgSw', 'fg', 'fg');
+  colorHandlers('bgSw', 'bg', 'bg');
+
+  $('#led').addEventListener('change', e => { cfg.led = e.target.checked; save(); layout(); });
+  $('#blink').addEventListener('change', e => { cfg.blink = e.target.checked; save(); });
+  $('#pause').addEventListener('click', () => { paused = !paused; $('#pause').textContent = paused ? '继续' : '暂停'; });
+
+  /* 全屏 */
+  const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+  function toggleFull() {
+    if (fsEl()) {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    } else {
+      const el = document.documentElement, rq = el.requestFullscreen || el.webkitRequestFullscreen;
+      const fail = () => toast('这个浏览器不让网页全屏，可以上下滑动屏幕收起地址栏');
+      if (!rq) { fail(); return; }
+      try { const r = rq.call(el); if (r && r.catch) r.catch(fail); } catch (e) { fail(); }
+    }
+  }
+  $('#full').addEventListener('click', toggleFull);
+  const onFs = () => { if (fsEl()) setUI(false); };
+  document.addEventListener('fullscreenchange', onFs);
+  document.addEventListener('webkitfullscreenchange', onFs);
+
+  /* 屏幕常亮 */
+  let lock = null;
+  const canLock = 'wakeLock' in navigator;
+  function acquire() {
+    if (!canLock || !cfg.awake || lock) return;
+    navigator.wakeLock.request('screen').then(l => {
+      lock = l; l.addEventListener('release', () => { lock = null; });
+    }).catch(() => {});
+  }
+  function release() { if (lock) { try { lock.release(); } catch (e) { /* ignore */ } lock = null; } }
+  if (!canLock) $('#awakeRow').hidden = true;
+  $('#awake').addEventListener('change', e => { cfg.awake = e.target.checked; save(); if (cfg.awake) acquire(); else release(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') acquire(); });
+  document.addEventListener('pointerdown', acquire, { once: true });
+
+  /* 键盘（接键盘的平板或电脑） */
+  document.addEventListener('keydown', e => {
+    if (/^(TEXTAREA|INPUT)$/.test(e.target.tagName)) return;
+    if (e.key === ' ' && cfg.mode === 'scroll') { e.preventDefault(); paused = !paused; sync(); }
+    else if (e.key === 'f' || e.key === 'F') toggleFull();
+    else if (e.key === 'h' || e.key === 'H') setUI(!ui);
+  });
+
+  /* ---------- 启动 ---------- */
+  if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) $('#tip').hidden = false;
+  window.scrollTo(0, Math.round(document.documentElement.scrollHeight / 2));
+  $('#txt').value = cfg.text;
+  renderRecent();
+  sync();
+  resize();
+  resetX();
+  acquire();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

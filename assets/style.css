@@ -1,0 +1,124 @@
+/* 工具箱共享样式：设计令牌 + 基础组件。
+   每个工具页都可以直接引用：<link rel="stylesheet" href="../../assets/style.css"> */
+
+:root {
+  --bg: #E9EDF1;
+  --paper: #F8FAFB;
+  --ink: #17212B;
+  --ink-2: #51606E;
+  --line: #C3CDD6;
+  --edge: #17212B;
+  --yellow: #F5C518;
+  --on-yellow: #17212B;
+  --teal: #0F7C86;
+  --red: #D6453D;
+  --blue: #3A63D8;
+  --radius: 8px;
+  --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131A21;
+    --paper: #1C252E;
+    --ink: #E7ECF1;
+    --ink-2: #98A6B3;
+    --line: #2C3843;
+    --edge: #4A5967;
+    --blue: #7FA0FF;
+    --teal: #3FB5C0;
+    --red: #FF7A70;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 var(--font);
+}
+
+a { color: inherit; }
+:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+/* 按钮：底部有一条硬边，按下时压下去 */
+.btn {
+  font: inherit;
+  font-weight: 600;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: var(--radius);
+  border: 2px solid var(--edge);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-decoration: none;
+  box-shadow: 0 3px 0 var(--edge);
+  transition: transform .08s, box-shadow .08s;
+}
+.btn:active { transform: translateY(3px); box-shadow: 0 0 0 var(--edge); }
+.btn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; transform: none; }
+.btn-primary { background: var(--yellow); color: var(--on-yellow); border-color: #17212B; }
+.btn-danger { color: var(--red); }
+.btn-sm { min-height: 36px; padding: 0 12px; font-size: .9rem; }
+
+/* 分段开关 */
+.seg {
+  display: inline-flex;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--paper);
+}
+.seg button {
+  font: inherit;
+  font-weight: 600;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.seg button + button { border-left: 2px solid var(--edge); }
+.seg button[aria-pressed="true"] { background: var(--yellow); color: var(--on-yellow); }
+
+/* 表单 */
+.field {
+  font: inherit;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+}
+textarea.field { resize: vertical; line-height: 1.5; }
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px 0 10px;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

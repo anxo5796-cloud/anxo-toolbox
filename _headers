@@ -1,0 +1,5 @@
+/admin/*
+  X-Robots-Tag: noindex, nofollow
+
+/tools.json
+  Cache-Control: no-cache

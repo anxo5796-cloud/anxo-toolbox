@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>转盘 / 抽卡</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<style>
+  .page { max-width: 1100px; margin: 0 auto; padding: calc(14px + env(safe-area-inset-top)) 16px 48px; }
+  .head { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+  .head h1 { margin: 0; font-size: 1.4rem; flex: 1 1 auto; }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+  @media (max-width: 820px) { .layout { grid-template-columns: 1fr; } }
+
+  .box { padding: 16px; background: var(--paper); border: 2px solid var(--edge); border-radius: 6px; box-shadow: 4px 4px 0 var(--edge); }
+  .box h2 { margin: 0 0 10px; font-size: 1rem; }
+
+  /* 转盘 */
+  .wheel-wrap { width: 100%; max-width: 540px; margin: 0 auto; }
+  #wheel { display: block; width: 100%; height: auto; cursor: pointer; touch-action: manipulation; }
+  .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 12px; }
+  .actions .btn-primary { min-width: 160px; font-size: 1.05rem; }
+
+  /* 结果 */
+  .result { min-height: 76px; margin-top: 16px; text-align: center; }
+  .result .label { color: var(--ink-2); font-size: .9rem; min-height: 1.4em; }
+  .result .val {
+    display: inline-block; margin-top: 4px; padding: 2px 14px;
+    font-size: clamp(1.5rem, 5vw, 2.2rem); font-weight: 800; word-break: break-word;
+    background: var(--yellow); color: var(--on-yellow); border-radius: 4px;
+  }
+  .pop { animation: pop .35s cubic-bezier(.2, 1.6, .4, 1); }
+  @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+  /* 卡牌 */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 12px; margin-top: 14px; }
+  .card { position: relative; aspect-ratio: 3 / 4; perspective: 700px; padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; }
+  .card .inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .55s cubic-bezier(.3, .7, .2, 1); }
+  .card.flipped { cursor: default; }
+  .card.flipped .inner { transform: rotateY(180deg); }
+  .face {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: 8px; text-align: center;
+    border: 2px solid var(--edge); border-radius: 6px;
+    backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  }
+  .cback {
+    background-color: var(--yellow);
+    background-image: radial-gradient(circle, #17212B 1.6px, transparent 1.8px);
+    background-size: 14px 14px;
+    box-shadow: 3px 3px 0 var(--edge);
+  }
+  .cfront { background: var(--paper); transform: rotateY(180deg); font-weight: 700; overflow: hidden; }
+  .cfront .txt { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; font-size: .95rem; }
+  .card:not(.flipped):hover .cback { transform: translateY(-3px); }
+  .card.hit { animation: wiggle .5s; }
+  @keyframes wiggle { 20% { transform: rotate(-5deg); } 40% { transform: rotate(5deg); } 60% { transform: rotate(-3deg); } 80% { transform: rotate(3deg); } }
+  .cards.shuffling .card { animation: shuf .45s; }
+  @keyframes shuf { 50% { transform: scale(.82) rotate(7deg); } }
+  .empty { margin: 20px 0 6px; text-align: center; color: var(--ink-2); }
+
+  /* 右侧面板 */
+  .panel { display: grid; gap: 16px; }
+  #items { min-height: 190px; }
+  .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; font-size: .9rem; color: var(--ink-2); }
+  .meta .grow { flex: 1 1 auto; }
+  .chk { display: flex; align-items: center; gap: 10px; min-height: 40px; margin-top: 6px; font-size: .95rem; }
+  .chk input { width: 20px; height: 20px; }
+  #history { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow: auto; font-size: .95rem; }
+  #history li { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  #history time { color: var(--ink-2); font-family: var(--mono); font-size: .8rem; flex: none; }
+  #history .t { flex: 1 1 auto; min-width: 0; word-break: break-word; font-weight: 600; }
+  #history em { font-style: normal; color: var(--ink-2); font-size: .8rem; flex: none; }
+  .hint { margin: 0; color: var(--ink-2); font-size: .9rem; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="head">
+    <a class="back" href="../../">‹ 工具箱</a>
+    <h1>转盘 / 抽卡</h1>
+    <div class="seg" role="group" aria-label="模式">
+      <button type="button" id="mWheel" aria-pressed="true">转盘</button>
+      <button type="button" id="mCards" aria-pressed="false">抽卡</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <section class="box" aria-label="舞台">
+      <div id="wheelView">
+        <div class="wheel-wrap"><canvas id="wheel" aria-label="转盘，点一下开始转"></canvas></div>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="spin">开始转</button>
+          <button type="button" class="btn" id="resetUsed" hidden>恢复全部选项</button>
+        </div>
+      </div>
+
+      <div id="cardView" hidden>
+        <div class="actions" style="margin-top:0">
+          <button type="button" class="btn btn-primary" id="draw">随机抽一张</button>
+          <button type="button" class="btn" id="shuffle">洗牌</button>
+          <button type="button" class="btn" id="flipAll">全部翻开</button>
+        </div>
+        <div class="cards" id="cards"></div>
+        <p class="empty" id="cardEmpty" hidden>右边先写几个选项，这里就会出现卡牌。</p>
+      </div>
+
+      <div class="result" role="status" aria-live="polite">
+        <div class="label" id="resLabel"></div>
+        <div class="val" id="resVal" hidden></div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="box">
+        <h2><label for="items">选项，一行一个</label></h2>
+        <textarea id="items" class="field" spellcheck="false" placeholder="例如：&#10;火锅&#10;烧烤&#10;日料"></textarea>
+        <div class="meta">
+          <span id="count"></span>
+          <span class="grow"></span>
+          <button type="button" class="btn btn-sm" id="sample">示例</button>
+          <button type="button" class="btn btn-sm" id="clear">清空</button>
+        </div>
+        <label class="chk" id="removeRow"><input type="checkbox" id="removeAfter"> 抽中后从转盘里拿掉</label>
+      </div>
+
+      <div class="box">
+        <h2>记录</h2>
+        <ol id="history"></ol>
+        <p class="hint" id="histEmpty">还没有记录。</p>
+        <div class="meta"><button type="button" class="btn btn-sm" id="clearHist">清除记录</button></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script src="../../assets/common.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = TB.$, esc = TB.esc, store = TB.store, vibrate = TB.vibrate, rand = TB.rand;
+
+  var SAMPLE = '火锅\n烧烤\n日料\n麻辣烫\n炒菜\n面馆';
+  var MAX = 100;
+  var TAU = Math.PI * 2;
+  var PAL = ['#F5C518', '#0F7C86', '#D6453D', '#3A63D8', '#8E5BD6', '#2F9E5B', '#F08A24', '#D9488A', '#17212B', '#6FB4C9'];
+
+  var ta = $('#items');
+  var items = [];            // 解析后的全部选项
+  var used = new Set();      // 转盘里已拿掉的选项下标
+  var pendingRemove = null;  // 刚抽中、下一次开转时才真正拿掉（避免转盘在显示结果时突然变形）
+  var mode = store.get('wheel.mode', 'wheel') === 'cards' ? 'cards' : 'wheel';
+  var removeAfter = !!store.get('wheel.remove', false);
+  var history = store.get('wheel.history', []);
+  if (!Array.isArray(history)) history = [];
+  var theta = 0;             // 转盘当前角度
+  var spinning = false;
+  var deck = [];             // 卡牌：{t, flipped}
+  var drawing = false;
+
+  function mod(a, m) { return ((a % m) + m) % m; }
+
+  /* ---------- 选项 ---------- */
+  function parse() {
+    return ta.value.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean).slice(0, MAX);
+  }
+  function active() {
+    var a = [];
+    items.forEach(function (t, i) { if (!used.has(i)) a.push({ t: t, i: i }); });
+    return a;
+  }
+  function updateMeta() {
+    var s = '共 ' + items.length + ' 项';
+    if (used.size) s += '，已拿掉 ' + used.size + ' 项';
+    if (ta.value.split(/\r?\n/).filter(function (x) { return x.trim(); }).length > MAX) s += '（最多 ' + MAX + ' 项）';
+    $('#count').textContent = s;
+    $('#resetUsed').hidden = !(used.size || pendingRemove !== null);
+    $('#spin').disabled = spinning || active().length === 0;
+  }
+
+  function onItems() {
+    var next = parse();
+    store.set('wheel.items', ta.value);
+    if (JSON.stringify(next) === JSON.stringify(items)) return;
+    items = next;
+    used.clear(); pendingRemove = null;
+    buildDeck();
+    drawWheel();
+    updateMeta();
+  }
+
+  /* ---------- 结果与记录 ---------- */
+  function showResult(text, label) {
+    $('#resLabel').textContent = label || '';
+    var v = $('#resVal');
+    v.hidden = !text;
+    v.textContent = text || '';
+    v.classList.remove('pop');
+    void v.offsetWidth;
+    if (text) v.classList.add('pop');
+  }
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function addHistory(text, how) {
+    var d = new Date();
+    history.unshift({ t: text, how: how, time: pad(d.getHours()) + ':' + pad(d.getMinutes()) });
+    history = history.slice(0, 30);
+    store.set('wheel.history', history);
+    renderHistory();
+  }
+  function renderHistory() {
+    $('#history').innerHTML = history.map(function (h) {
+      return '<li><time>' + esc(h.time) + '</time><span class="t">' + esc(h.t) + '</span><em>' + esc(h.how) + '</em></li>';
+    }).join('');
+    $('#histEmpty').hidden = history.length > 0;
+    $('#clearHist').hidden = history.length === 0;
+  }
+
+  /* ---------- 转盘 ---------- */
+  var cv = $('#wheel'), ctx = cv.getContext('2d');
+  var S = 0, theme = {};
+
+  function readTheme() {
+    var cs = getComputedStyle(document.documentElement);
+    var g = function (k) { return cs.getPropertyValue(k).trim(); };
+    theme = { paper: g('--paper'), ink: g('--ink'), edge: g('--edge'), sub: g('--ink-2'), font: getComputedStyle(document.body).fontFamily };
+  }
+  function size() {
+    var d = Math.min(window.devicePixelRatio || 1, 3);
+    var w = Math.round(cv.getBoundingClientRect().width);
+    if (!w) return false;
+    S = w;
+    cv.width = S * d; cv.height = S * d;
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    readTheme();
+    return true;
+  }
+
+  function colorAt(i, n) {
+    var k = i % PAL.length;
+    if (i === n - 1 && n > 1 && k === 0) k = 1;   // 最后一块不要和第一块同色
+    return PAL[k];
+  }
+  function lum(hex) {
+    var v = parseInt(hex.slice(1), 16);
+    return (0.299 * (v >> 16 & 255) + 0.587 * (v >> 8 & 255) + 0.114 * (v & 255)) / 255;
+  }
+  function fit(text, max) {
+    if (ctx.measureText(text).width <= max) return text;
+    var ch = Array.from(text);
+    while (ch.length > 1 && ctx.measureText(ch.join('') + '…').width > max) ch.pop();
+    return ch.join('') + '…';
+  }
+
+  function drawWheel() {
+    if (!S) return;
+    ctx.clearRect(0, 0, S, S);
+    var a = active(), n = a.length, c = S / 2, r = c - 16, i;
+
+    if (n === 0) {
+      ctx.setLineDash([8, 8]);
+      ctx.lineWidth = 3; ctx.strokeStyle = theme.edge;
+      ctx.beginPath(); ctx.arc(c, c, r, 0, TAU); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = theme.sub; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '600 ' + Math.round(S * 0.045) + 'px ' + theme.font;
+      ctx.fillText(items.length ? '选项都抽完了' : '先在右边写几个选项', c, c);
+      return;
+    }
+
+    var seg = TAU / n;
+    for (i = 0; i < n; i++) {
+      var a0 = theta + i * seg, col = colorAt(i, n);
+      ctx.beginPath();
+      ctx.moveTo(c, c);
+      ctx.arc(c, c, r, a0, a0 + seg);
+      ctx.closePath();
+      ctx.fillStyle = col; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = theme.paper; ctx.stroke();
+    }
+
+    var fs = Math.max(11, Math.min(22, r * seg * 0.42));
+    ctx.font = '700 ' + fs + 'px ' + theme.font;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (i = 0; i < n; i++) {
+      var col2 = colorAt(i, n);
+      ctx.save();
+      ctx.translate(c, c);
+      ctx.rotate(theta + i * seg + seg / 2);
+      ctx.fillStyle = lum(col2) > 0.6 ? '#17212B' : '#FFFFFF';
+      ctx.fillText(fit(a[i].t, r * 0.66), r - 14, 0);
+      ctx.restore();
+    }
+
+    // 外圈
+    ctx.lineWidth = 4; ctx.strokeStyle = theme.edge;
+    ctx.beginPath(); ctx.arc(c, c, r, 0, TAU); ctx.stroke();
+
+    // 轮毂
+    ctx.fillStyle = theme.paper; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(c, c, S * 0.065, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = theme.edge;
+    ctx.beginPath(); ctx.arc(c, c, S * 0.02, 0, TAU); ctx.fill();
+
+    // 指针（固定在正上方）
+    ctx.beginPath();
+    ctx.moveTo(c - 14, 2); ctx.lineTo(c + 14, 2); ctx.lineTo(c, 34); ctx.closePath();
+    ctx.fillStyle = theme.ink; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = theme.paper; ctx.stroke();
+  }
+
+  function pointerIndex(n) {
+    var seg = TAU / n;
+    return Math.min(n - 1, Math.floor(mod(-Math.PI / 2 - theta, TAU) / seg));
+  }
+
+  function setBusy(b) {
+    spinning = b;
+    $('#spin').textContent = b ? '转动中…' : '开始转';
+    updateMeta();
+  }
+
+  function spin() {
+    if (spinning) return;
+    if (pendingRemove !== null) { used.add(pendingRemove); pendingRemove = null; }
+    var a = active();
+    if (!a.length) { showResult('', items.length ? '选项都抽完了，点“恢复全部选项”' : '先写几个选项'); updateMeta(); drawWheel(); return; }
+    showResult('', '');
+    var n = a.length, seg = TAU / n;
+    drawWheel();
+
+    var w = rand(n);
+    var jitter = (Math.random() - 0.5) * 0.7;             // 落在这一格中间偏一点，不总是正中
+    var finalTheta = -Math.PI / 2 - (w + 0.5 + jitter) * seg;
+    var t0 = theta;
+    var total = (5 + rand(4)) * TAU + mod(finalTheta - t0, TAU);
+    var dur = 4200 + rand(1800);
+    var start = performance.now(), lastIdx = -1;
+    setBusy(true);
+
+    function step(now) {
+      var x = Math.min(1, (now - start) / dur);
+      theta = t0 + total * (1 - Math.pow(1 - x, 4));
+      drawWheel();
+      var idx = pointerIndex(n);
+      if (idx !== lastIdx) { if (lastIdx !== -1) vibrate(6); lastIdx = idx; }
+      if (x < 1) { requestAnimationFrame(step); return; }
+
+      theta = mod(theta, TAU);
+      setBusy(false);
+      showResult(a[w].t, '抽中');
+      addHistory(a[w].t, '转盘');
+      vibrate([40, 30, 90]);
+      if (removeAfter) pendingRemove = a[w].i;
+      updateMeta();
+    }
+    requestAnimationFrame(step);
+  }
+
+  /* ---------- 卡牌 ---------- */
+  function buildDeck() {
+    deck = items.map(function (t) { return { t: t, flipped: false }; });
+    TB.shuffle(deck);
+    renderCards();
+  }
+  function renderCards() {
+    $('#cards').innerHTML = deck.map(function (d, i) {
+      return '<button type="button" class="card' + (d.flipped ? ' flipped' : '') + '" data-i="' + i + '" aria-label="第 ' + (i + 1) + ' 张，' + (d.flipped ? esc(d.t) : '未翻开') + '" title="' + (d.flipped ? esc(d.t) : '') + '">' +
+        '<span class="inner"><span class="face cback"></span><span class="face cfront"><span class="txt">' + esc(d.t) + '</span></span></span></button>';
+    }).join('');
+    $('#cardEmpty').hidden = deck.length > 0;
+    $('#draw').disabled = deck.length === 0;
+    $('#shuffle').disabled = deck.length === 0;
+    $('#flipAll').disabled = deck.length === 0;
+  }
+  function flip(i) {
+    var d = deck[i];
+    if (!d || d.flipped) return;
+    d.flipped = true;
+    var el = $('#cards').children[i];
+    el.classList.add('flipped');
+    el.setAttribute('aria-label', '第 ' + (i + 1) + ' 张，' + d.t);
+    showResult(d.t, '翻到了');
+    addHistory(d.t, '抽卡');
+    vibrate(15);
+  }
+  $('#cards').addEventListener('click', function (e) {
+    var b = e.target.closest('.card');
+    if (b && !drawing) flip(+b.getAttribute('data-i'));
+  });
+
+  $('#draw').addEventListener('click', function () {
+    if (drawing) return;
+    var idx = [];
+    deck.forEach(function (d, i) { if (!d.flipped) idx.push(i); });
+    if (!idx.length) { showResult('', '牌都翻完了，点“洗牌”重新开始'); return; }
+    var i = idx[rand(idx.length)], el = $('#cards').children[i];
+    drawing = true;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('hit');
+    setTimeout(function () { el.classList.remove('hit'); flip(i); drawing = false; }, 550);
+  });
+
+  $('#shuffle').addEventListener('click', function () {
+    deck.forEach(function (d) { d.flipped = false; });
+    TB.shuffle(deck);
+    renderCards();
+    showResult('', '');
+    var box = $('#cards');
+    box.classList.remove('shuffling'); void box.offsetWidth; box.classList.add('shuffling');
+    setTimeout(function () { box.classList.remove('shuffling'); }, 500);
+  });
+
+  $('#flipAll').addEventListener('click', function () {
+    deck.forEach(function (d, i) {
+      if (d.flipped) return;
+      d.flipped = true;
+      var el = $('#cards').children[i];
+      el.classList.add('flipped');
+      el.setAttribute('aria-label', '第 ' + (i + 1) + ' 张，' + d.t);
+    });
+  });
+
+  /* ---------- 模式切换与面板按钮 ---------- */
+  function applyMode() {
+    var wheel = mode === 'wheel';
+    $('#mWheel').setAttribute('aria-pressed', String(wheel));
+    $('#mCards').setAttribute('aria-pressed', String(!wheel));
+    $('#wheelView').hidden = !wheel;
+    $('#cardView').hidden = wheel;
+    $('#removeRow').hidden = !wheel;
+    store.set('wheel.mode', mode);
+    showResult('', '');
+    if (wheel) { size(); drawWheel(); }
+  }
+  $('#mWheel').addEventListener('click', function () { if (!spinning) { mode = 'wheel'; applyMode(); } });
+  $('#mCards').addEventListener('click', function () { if (!spinning) { mode = 'cards'; applyMode(); } });
+
+  $('#spin').addEventListener('click', spin);
+  cv.addEventListener('click', spin);
+  $('#resetUsed').addEventListener('click', function () {
+    if (spinning) return;
+    used.clear(); pendingRemove = null;
+    drawWheel(); updateMeta(); showResult('', '');
+  });
+
+  ta.addEventListener('input', onItems);
+  $('#sample').addEventListener('click', function () { ta.value = SAMPLE; onItems(); });
+  $('#clear').addEventListener('click', function () { ta.value = ''; onItems(); ta.focus(); });
+  $('#removeAfter').addEventListener('change', function (e) {
+    removeAfter = e.target.checked;
+    store.set('wheel.remove', removeAfter);
+  });
+  $('#clearHist').addEventListener('click', function () {
+    history = []; store.set('wheel.history', history); renderHistory();
+  });
+
+  /* ---------- 初始化 ---------- */
+  var savedItems = store.get('wheel.items', null);
+  ta.value = typeof savedItems === 'string' ? savedItems : SAMPLE;
+  $('#removeAfter').checked = removeAfter;
+  items = parse();
+  buildDeck();
+  renderHistory();
+  updateMeta();
+  applyMode();
+
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () { if (mode === 'wheel' && size()) drawWheel(); }).observe($('.wheel-wrap'));
+  } else {
+    window.addEventListener('resize', function () { if (mode === 'wheel' && size()) drawWheel(); });
+  }
+  try {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { readTheme(); drawWheel(); });
+  } catch (e) { /* 老浏览器忽略 */ }
+})();
+</script>
+</body>
+</html>

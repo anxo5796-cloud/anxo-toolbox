@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>工具箱</title>
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  /* 打孔挂板：背景是一块网格孔洞的板子，每个工具像挂在上面的吊牌 */
+  body {
+    min-height: 100vh;
+    background-image: radial-gradient(circle, var(--line) 1.6px, transparent 1.8px);
+    background-size: 26px 26px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: calc(32px + env(safe-area-inset-top)) 20px 56px; }
+  h1 { margin: 0 0 8px; font-size: clamp(2.1rem, 6.5vw, 3.3rem); line-height: 1.1; font-weight: 800; letter-spacing: .06em; }
+  .sub { margin: 0; max-width: 34em; color: var(--ink-2); }
+
+  .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 28px 0 26px; }
+  #q { flex: 1 1 220px; min-width: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    font: inherit; font-size: .92rem; font-weight: 600;
+    min-height: 40px; padding: 0 14px;
+    border: 2px solid var(--edge); border-radius: 999px;
+    background: var(--paper); color: var(--ink); cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { background: var(--yellow); color: var(--on-yellow); }
+
+  .grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 24px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  .grid > li { display: flex; }
+  .card {
+    position: relative; display: block; width: 100%;
+    padding: 34px 18px 18px;
+    background: var(--paper);
+    border: 2px solid var(--edge); border-radius: 6px;
+    box-shadow: 4px 4px 0 var(--edge);
+    text-decoration: none; color: inherit;
+    transition: transform .12s, box-shadow .12s;
+  }
+  .card::before { /* 吊牌孔 */
+    content: ""; position: absolute; top: 12px; left: 50%;
+    width: 12px; height: 12px; margin-left: -6px;
+    border-radius: 50%; background: var(--bg); border: 2px solid var(--edge);
+  }
+  .card::after { /* 分类色条 */
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px;
+    background: var(--c, var(--yellow));
+  }
+  .card:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--edge); }
+  .card:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--edge); }
+  .ico { font-size: 2rem; line-height: 1; }
+  .name { margin: 10px 0 4px; font-size: 1.15rem; font-weight: 700; }
+  .desc { margin: 0; color: var(--ink-2); font-size: .92rem; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+  .tag { font-size: .78rem; padding: 1px 7px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink-2); }
+
+  #msg { margin: 8px 0 0; padding: 14px 16px; border: 2px dashed var(--edge); border-radius: 6px; background: var(--paper); }
+  #msg code { font-family: var(--mono); font-size: .9em; }
+  footer { margin-top: 48px; font-size: .88rem; color: var(--ink-2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="siteTitle">工具箱</h1>
+    <p class="sub" id="siteSub"></p>
+  </header>
+
+  <div class="bar">
+    <input id="q" class="field" type="search" placeholder="搜索工具" aria-label="搜索工具">
+    <div class="chips" id="chips" role="group" aria-label="分类"></div>
+  </div>
+
+  <main>
+    <ul class="grid" id="grid"></ul>
+    <div id="msg" hidden></div>
+  </main>
+
+  <footer><a href="admin/">管理工具列表</a></footer>
+</div>
+
+<script src="assets/common.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = TB.$, esc = TB.esc;
+  var COLORS = ['#F5C518', '#0F7C86', '#D6453D', '#3A63D8', '#8E5BD6', '#2F9E5B', '#F08A24', '#D9488A'];
+  var tools = [], cats = [], active = '', query = '';
+
+  function showMsg(html) { var m = $('#msg'); m.innerHTML = html; m.hidden = false; }
+  function hideMsg() { $('#msg').hidden = true; }
+
+  function render() {
+    var q = query.trim().toLowerCase();
+    var list = tools.filter(function (t) {
+      if (active && (t.category || '未分类') !== active) return false;
+      if (!q) return true;
+      var hay = [t.name, t.desc, t.category].concat(t.tags || []).join(' ').toLowerCase();
+      return hay.indexOf(q) !== -1;
+    });
+
+    $('#grid').innerHTML = list.map(function (t) {
+      var c = COLORS[cats.indexOf(t.category || '未分类') % COLORS.length];
+      var tags = (t.tags || []).map(function (g) { return '<span class="tag">' + esc(g) + '</span>'; }).join('');
+      return '<li><a class="card" style="--c:' + c + '" href="' + esc(TB.safeUrl(t.path)) + '">' +
+        '<div class="ico" aria-hidden="true">' + esc(t.icon || '🔧') + '</div>' +
+        '<div class="name">' + esc(t.name) + '</div>' +
+        '<p class="desc">' + esc(t.desc) + '</p>' +
+        (tags ? '<div class="tags">' + tags + '</div>' : '') +
+        '</a></li>';
+    }).join('');
+
+    if (!tools.length) {
+      showMsg('还没有工具。打开<a href="admin/">管理页</a>添加第一个。');
+    } else if (!list.length) {
+      showMsg('没有匹配的工具，换个关键词或分类试试。');
+    } else {
+      hideMsg();
+    }
+  }
+
+  function renderChips() {
+    if (cats.length < 2) { $('#chips').innerHTML = ''; return; }
+    var all = [''].concat(cats);
+    $('#chips').innerHTML = all.map(function (c) {
+      return '<button type="button" class="chip" data-c="' + esc(c) + '" aria-pressed="' + (c === active) + '">' + esc(c || '全部') + '</button>';
+    }).join('');
+  }
+
+  $('#chips').addEventListener('click', function (e) {
+    var b = e.target.closest('.chip');
+    if (!b) return;
+    active = b.getAttribute('data-c');
+    renderChips();
+    render();
+  });
+  $('#q').addEventListener('input', function (e) { query = e.target.value; render(); });
+
+  fetch('tools.json', { cache: 'no-cache' })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function (data) {
+      var site = data.site || {};
+      if (site.title) { $('#siteTitle').textContent = site.title; document.title = site.title; }
+      $('#siteSub').textContent = site.subtitle || '';
+      tools = (data.tools || []).filter(function (t) { return !t.hidden; });
+      tools.forEach(function (t) {
+        var c = t.category || '未分类';
+        if (cats.indexOf(c) === -1) cats.push(c);
+      });
+      renderChips();
+      render();
+    })
+    .catch(function () {
+      showMsg('读不到 <code>tools.json</code>。直接双击打开 HTML 文件时，浏览器会拦截这类请求。' +
+        '在项目目录运行 <code>python3 -m http.server 8000</code>，再访问 <code>http://localhost:8000</code>，或者部署后访问。');
+    });
+})();
+</script>
+</body>
+</html>

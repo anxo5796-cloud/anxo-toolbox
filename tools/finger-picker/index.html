@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>手指选人</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
+  body {
+    background: #111922; color: #EAF0F5;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    touch-action: none;
+  }
+  #cv { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  .bar {
+    position: fixed; inset: 0 0 auto 0; z-index: 2;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 10px calc(12px + env(safe-area-inset-left));
+    pointer-events: none;
+  }
+  .bar > * { pointer-events: auto; }
+  .group { display: inline-flex; gap: 6px; align-items: center; }
+
+  .pill {
+    font: inherit; font-size: .95rem; font-weight: 600;
+    min-height: 40px; padding: 0 16px;
+    display: inline-flex; align-items: center;
+    color: #EAF0F5; background: rgba(255,255,255,.08);
+    border: 1.5px solid rgba(255,255,255,.28); border-radius: 999px;
+    text-decoration: none; cursor: pointer;
+  }
+  .pill:active { background: rgba(255,255,255,.18); }
+  .pill[aria-pressed="true"] { background: #F5C518; border-color: #F5C518; color: #17212B; }
+  select.pill { appearance: none; -webkit-appearance: none; }
+  select.pill option { color: #17212B; }
+
+  #hint {
+    position: fixed; inset: 0; z-index: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; text-align: center; pointer-events: none;
+  }
+  #hint b { font-size: clamp(1.6rem, 5vw, 2.5rem); font-weight: 800; letter-spacing: .08em; }
+  #hint span { margin-top: 12px; color: #9FB0BF; }
+
+  #status {
+    position: fixed; left: 0; right: 0; z-index: 1;
+    top: calc(76px + env(safe-area-inset-top));
+    text-align: center; pointer-events: none;
+  }
+  #big { min-height: 1em; font-size: clamp(3rem, 12vw, 5.5rem); font-weight: 800; line-height: 1; }
+  #sub { margin-top: 8px; min-height: 1.6em; color: #9FB0BF; }
+
+  .dock {
+    position: fixed; left: 0; right: 0; z-index: 2;
+    bottom: calc(22px + env(safe-area-inset-bottom));
+    display: flex; justify-content: center; gap: 12px; pointer-events: none;
+  }
+  .dock > * { pointer-events: auto; }
+  .go {
+    font: inherit; font-size: 1.15rem; font-weight: 800; letter-spacing: .1em;
+    min-height: 56px; padding: 0 44px;
+    background: #F5C518; color: #17212B;
+    border: 0; border-radius: 999px; cursor: pointer;
+    box-shadow: 0 4px 0 #9C7F0B;
+  }
+  .go:active { transform: translateY(4px); box-shadow: none; }
+  .go:disabled { background: rgba(255,255,255,.12); color: rgba(255,255,255,.4); box-shadow: none; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div class="bar">
+  <a class="pill" href="../../">‹ 工具箱</a>
+  <div class="group">
+    <div class="group" role="group" aria-label="开始方式">
+      <button type="button" class="pill" id="mAuto">自动</button>
+      <button type="button" class="pill" id="mManual">手动</button>
+    </div>
+    <select class="pill" id="delay" aria-label="倒计时秒数">
+      <option value="2">2 秒</option>
+      <option value="3">3 秒</option>
+      <option value="5">5 秒</option>
+    </select>
+  </div>
+</div>
+
+<div id="hint">
+  <b>把手指按在屏幕上</b>
+  <span id="hintSub"></span>
+</div>
+
+<div id="status" aria-live="polite">
+  <div id="big"></div>
+  <div id="sub"></div>
+</div>
+
+<div class="dock">
+  <button type="button" class="go" id="go" hidden>开始</button>
+  <button type="button" class="go" id="again" hidden>再来一次</button>
+</div>
+
+<script src="../../assets/common.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = TB.$;
+
+  var COLORS = ['#F5C518', '#2EC4B6', '#FF6B6B', '#7BA7FF', '#C77DFF', '#8BD450', '#FF9F45', '#FF7EB6', '#4DD9E8', '#E8EEF2'];
+  var MIN = 2;      // 至少几个人才能开始
+  var K = 20;       // 高亮跳动的次数
+  var HOLD = 900;   // 最后一跳之后停多久再亮出结果（毫秒）
+
+  var cv = $('#cv'), ctx = cv.getContext('2d');
+  var W = 0, H = 0;
+  function resize() {
+    var d = Math.min(window.devicePixelRatio || 1, 3);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * d); cv.height = Math.round(H * d);
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', resize);
+  resize();
+
+  /* ---------- 状态 ---------- */
+  var cfg = { mode: 'auto', delay: 3 };
+  var saved = TB.store.get('finger.cfg', {});
+  if (saved.mode === 'manual') cfg.mode = 'manual';
+  if ([2, 3, 5].indexOf(saved.delay) !== -1) cfg.delay = saved.delay;
+
+  var fingers = new Map();   // key -> {key, x, y, ci, born}
+  var phase = 'idle';        // idle | choosing | result
+  var cdStart = null;        // 自动模式倒计时的起点
+  var part = [];             // 本轮参与者（开始选择时锁定）
+  var seq = [], stepT = [];  // 高亮顺序、每一跳的时间点
+  var chooseAt = 0, lastStep = -1;
+  var winner = null, resultAt = 0;
+  var notice = null;         // {text, until}
+  var mouseSeq = 0;
+
+  function nextColor() {
+    var used = {};
+    fingers.forEach(function (f) { used[f.ci] = true; });
+    for (var i = 0; i < COLORS.length; i++) if (!used[i]) return i;
+    return fingers.size % COLORS.length;
+  }
+
+  // 手指数量变化后，重新计时
+  function touched() {
+    cdStart = (phase === 'idle' && cfg.mode === 'auto' && fingers.size >= MIN) ? performance.now() : null;
+  }
+
+  function reset() {
+    phase = 'idle'; part = []; winner = null; lastStep = -1;
+  }
+
+  function abort(text) {
+    reset();
+    notice = { text: text, until: performance.now() + 2500 };
+    touched();
+  }
+
+  function startChoosing() {
+    part = Array.from(fingers.values());
+    var n = part.length;
+    if (n < MIN) return;
+    phase = 'choosing'; cdStart = null; lastStep = -1;
+
+    var win = TB.rand(n), i, c, prev = -1;
+    seq = [];
+    if (n === 2) {
+      for (i = K - 1, c = win; i >= 0; i--, c = 1 - c) seq[i] = c;
+    } else {
+      for (i = 0; i < K; i++) {
+        do { c = TB.rand(n); } while (c === prev);
+        seq.push(c); prev = c;
+      }
+      seq[K - 1] = win;
+      if (seq[K - 2] === win) {
+        do { c = TB.rand(n); } while (c === win || c === seq[K - 3]);
+        seq[K - 2] = c;
+      }
+    }
+
+    // 越跳越慢
+    var t = 0;
+    stepT = [];
+    for (i = 0; i < K; i++) { stepT.push(t); t += 70 * Math.pow(1.09, i); }
+    chooseAt = performance.now() + 350;
+    TB.vibrate(30);
+  }
+
+  function finish(now) {
+    phase = 'result';
+    winner = part[seq[K - 1]];
+    resultAt = now;
+    TB.vibrate([60, 40, 140]);
+  }
+
+  /* ---------- 触控输入 ---------- */
+  var RADIUS_HIT = 50;
+
+  function addFinger(key, e) {
+    fingers.set(key, { key: key, x: e.clientX, y: e.clientY, ci: nextColor(), born: performance.now() });
+  }
+
+  cv.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    if (phase === 'result') reset();
+    if (phase === 'choosing') return;
+
+    if (e.pointerType === 'mouse') {
+      // 电脑上没法多点触控：点一下放一个圆点，再点它就取消
+      if (e.button !== 0) return;
+      var hit = null;
+      fingers.forEach(function (f, k) {
+        if (typeof k === 'string' && Math.hypot(f.x - e.clientX, f.y - e.clientY) < RADIUS_HIT) hit = k;
+      });
+      if (hit) fingers.delete(hit);
+      else addFinger('m' + (++mouseSeq), e);
+    } else {
+      addFinger(e.pointerId, e);
+    }
+    touched();
+  });
+
+  cv.addEventListener('pointermove', function (e) {
+    var f = fingers.get(e.pointerId);
+    if (f) { f.x = e.clientX; f.y = e.clientY; }
+  });
+
+  function lift(e) {
+    if (e.pointerType === 'mouse') return;
+    var f = fingers.get(e.pointerId);
+    if (!f) return;
+    fingers.delete(e.pointerId);
+    if (phase === 'choosing') {
+      if (part.indexOf(f) !== -1) abort('有人松手了，本轮已取消');
+    } else if (phase === 'idle') {
+      touched();
+    }
+  }
+  cv.addEventListener('pointerup', lift);
+  cv.addEventListener('pointercancel', lift);
+
+  // 禁止浏览器自己的滚动、缩放、长按菜单
+  document.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+  document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  /* ---------- 控件 ---------- */
+  function applyCfg() {
+    $('#mAuto').setAttribute('aria-pressed', String(cfg.mode === 'auto'));
+    $('#mManual').setAttribute('aria-pressed', String(cfg.mode === 'manual'));
+    $('#delay').hidden = cfg.mode !== 'auto';
+    $('#delay').value = String(cfg.delay);
+    TB.store.set('finger.cfg', cfg);
+    touched();
+  }
+  $('#mAuto').addEventListener('click', function () { cfg.mode = 'auto'; applyCfg(); });
+  $('#mManual').addEventListener('click', function () { cfg.mode = 'manual'; applyCfg(); });
+  $('#delay').addEventListener('change', function (e) { cfg.delay = +e.target.value; applyCfg(); });
+  $('#go').addEventListener('click', function () { if (phase === 'idle') startChoosing(); });
+  $('#again').addEventListener('click', function () { reset(); touched(); });
+
+  $('#hintSub').textContent = window.matchMedia && window.matchMedia('(pointer: coarse)').matches
+    ? '至少 2 个人，各按一根手指并保持按住'
+    : '电脑上：点击画面放一个圆点，再点一次取消';
+
+  /* ---------- 绘制 ---------- */
+  function rgba(hex, a) {
+    var n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+  function circle(x, y, r) { ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, Math.PI * 2); }
+
+  function drawOne(f, i, now, cur, R) {
+    var col = COLORS[f.ci];
+    var b = Math.min(1, (now - f.born) / 220), e = 1 - Math.pow(1 - b, 3);
+    var ring = R * (0.6 + 0.4 * e), dot = R * 0.42 * e, alpha = e;
+    var choosing = phase === 'choosing', isResult = phase === 'result';
+    var isHi = choosing && cur >= 0 && part[seq[cur]] === f;
+    var isWin = isResult && f === winner;
+
+    if (isResult && !isWin) alpha *= 0.18;
+    if (choosing && cur >= 0 && !isHi) alpha *= 0.4;
+
+    ctx.save();
+    if (isWin) {
+      var t0 = (now - resultAt) / 1000;
+      var g = Math.min(1, t0 / 0.4);
+      var rr = R * (1.55 + 0.65 * (1 - Math.pow(1 - g, 3)));
+      var k, t;
+      ctx.strokeStyle = col; ctx.lineWidth = 4;
+      for (k = 0; k < 3; k++) {
+        t = (t0 * 0.9 + k / 3) % 1;
+        ctx.globalAlpha = alpha * (1 - t) * 0.7;
+        circle(f.x, f.y, rr + t * R * 4); ctx.stroke();
+      }
+      ctx.globalAlpha = alpha;
+      ctx.shadowColor = col; ctx.shadowBlur = 40; ctx.fillStyle = col;
+      circle(f.x, f.y, rr); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 4;
+      circle(f.x, f.y, rr * 0.55); ctx.stroke();
+    } else if (isHi) {
+      ctx.globalAlpha = alpha;
+      ctx.shadowColor = col; ctx.shadowBlur = 36; ctx.fillStyle = col;
+      circle(f.x, f.y, R * 1.55); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 4;
+      circle(f.x, f.y, R * 1.55 + 8); ctx.stroke();
+    } else {
+      var pulse = 3 * Math.sin(now / 260 + i);
+      ctx.strokeStyle = col; ctx.lineWidth = 3;
+      ctx.globalAlpha = alpha * 0.35;
+      circle(f.x, f.y, ring + 10 + pulse); ctx.stroke();
+      ctx.globalAlpha = alpha; ctx.lineWidth = 5;
+      circle(f.x, f.y, ring); ctx.stroke();
+      ctx.fillStyle = col;
+      circle(f.x, f.y, dot); ctx.fill();
+
+      if (phase === 'idle' && cdStart !== null) {
+        var p = Math.min(1, (now - cdStart) / (cfg.delay * 1000));
+        ctx.lineWidth = 5; ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(255,255,255,.18)';
+        circle(f.x, f.y, ring + 20); ctx.stroke();
+        ctx.strokeStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, ring + 20, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function render(now, cur) {
+    ctx.clearRect(0, 0, W, H);
+    var R = Math.min(56, Math.max(34, Math.min(W, H) * 0.075));
+
+    if (phase === 'result' && winner) {
+      var a = Math.min(1, (now - resultAt) / 600) * 0.28;
+      var g = ctx.createRadialGradient(winner.x, winner.y, 0, winner.x, winner.y, Math.max(W, H) * 0.8);
+      g.addColorStop(0, rgba(COLORS[winner.ci], a));
+      g.addColorStop(1, rgba(COLORS[winner.ci], 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    var list = phase === 'idle' ? Array.from(fingers.values()) : part;
+    list.forEach(function (f, i) { drawOne(f, i, now, cur, R); });
+  }
+
+  /* ---------- 文案 ---------- */
+  var ui = {};
+  function setText(key, v) {
+    if (ui[key] !== v) { ui[key] = v; $('#' + key).textContent = v; }
+  }
+  function setHidden(sel, v) {
+    var el = $(sel);
+    if (el.hidden !== v) el.hidden = v;
+  }
+
+  function updateUI(now) {
+    if (notice && now >= notice.until) notice = null;
+    var n = fingers.size, big = '', sub = '', hint = false;
+
+    if (phase === 'idle') {
+      if (n === 0) hint = !notice;
+      else if (n < MIN) sub = '再来一个人，至少 2 个';
+      else if (cfg.mode === 'auto') {
+        if (cdStart !== null) big = String(Math.max(1, Math.ceil(cfg.delay - (now - cdStart) / 1000)));
+        sub = n + ' 人参与，保持按住';
+      } else {
+        sub = n + ' 人就绪，点“开始”';
+      }
+    } else if (phase === 'choosing') {
+      sub = '选择中…';
+    } else {
+      big = '就是你！';
+      sub = '点一下屏幕，或点“再来一次”';
+    }
+    if (notice) sub = notice.text;
+
+    setText('big', big);
+    setText('sub', sub);
+    setHidden('#hint', !hint);
+    setHidden('#go', !(cfg.mode === 'manual' && phase === 'idle'));
+    $('#go').disabled = n < MIN;
+    setHidden('#again', phase !== 'result');
+  }
+
+  /* ---------- 主循环 ---------- */
+  function frame(now) {
+    requestAnimationFrame(frame);
+
+    if (phase === 'idle' && cdStart !== null && now - cdStart >= cfg.delay * 1000) startChoosing();
+
+    var cur = -1;
+    if (phase === 'choosing') {
+      var x = now - chooseAt;
+      if (x >= stepT[K - 1] + HOLD) {
+        finish(now);
+      } else {
+        for (var i = K - 1; i >= 0; i--) { if (x >= stepT[i]) { cur = i; break; } }
+        if (cur !== lastStep) { lastStep = cur; if (cur >= 0) TB.vibrate(10); }
+      }
+    }
+    render(now, cur);
+    updateUI(now);
+  }
+
+  applyCfg();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

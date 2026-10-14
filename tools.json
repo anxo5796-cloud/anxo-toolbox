@@ -1,0 +1,70 @@
+{
+  "site": {
+    "title": "工具箱",
+    "subtitle": "常用的小工具，每个都是一个独立页面，打开就能用。"
+  },
+  "tools": [
+    {
+      "id": "finger-picker",
+      "name": "手指选人",
+      "desc": "每人按一根手指，倒计时后在手指间跳动，最后停在一个人身上。",
+      "category": "抽选",
+      "icon": "👆",
+      "path": "tools/finger-picker/",
+      "tags": [
+        "多人",
+        "触屏"
+      ]
+    },
+    {
+      "id": "wheel",
+      "name": "转盘 / 抽卡",
+      "desc": "写下选项，转一圈或翻一张牌，让随机替你决定。",
+      "category": "抽选",
+      "icon": "🎡",
+      "path": "tools/wheel/",
+      "tags": [
+        "决定",
+        "清单"
+      ]
+    },
+    {
+      "id": "marquee",
+      "name": "滚动字幕",
+      "desc": "平板上的字幕牌：文字滚动或静止显示，可全屏、LED 点阵、闪烁。",
+      "category": "展示",
+      "icon": "📺",
+      "path": "tools/marquee/",
+      "tags": [
+        "平板",
+        "全屏"
+      ]
+    },
+    {
+      "id": "qrcode",
+      "name": "二维码生成",
+      "desc": "文字、网址、Wi-Fi、名片一键生成二维码，可下载 PNG / SVG，也能全屏给别人扫。",
+      "category": "实用",
+      "icon": "🔳",
+      "path": "tools/qrcode/",
+      "tags": [
+        "Wi-Fi",
+        "名片",
+        "离线"
+      ]
+    },
+    {
+      "id": "image-compress",
+      "name": "图片压缩",
+      "desc": "批量压缩、缩小尺寸、转 JPEG / WebP，可指定压到多少 KB 以内，全程在本地完成。",
+      "category": "实用",
+      "icon": "🗜️",
+      "path": "tools/image-compress/",
+      "tags": [
+        "批量",
+        "本地处理",
+        "离线"
+      ]
+    }
+  ]
+}
