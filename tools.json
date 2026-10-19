@@ -65,6 +65,32 @@
         "本地处理",
         "离线"
       ]
-    }
+    },
+    {
+      "id": "md-render",
+      "name": "Markdown 渲染",
+      "desc": "上传或粘贴 .md，选一个主题预览，导出独立 HTML 或存成 PDF，手机上也好用。",
+      "category": "实用",
+      "icon": "📝",
+      "path": "tools/md-render/",
+      "tags": [
+        "文档",
+        "PDF",
+        "离线"
+      ]
+    },
+    {
+      "id": "photo-grid",
+      "name": "九宫格拼图",
+      "desc": "九张图拼成一张，或把一张图切成九宫格，可调间距、背景色，拆分后打包下载。",
+      "category": "实用",
+      "icon": "🧩",
+      "path": "tools/photo-grid/",
+      "tags": [
+        "朋友圈", 
+        "拼图", 
+        "本地处理"
+      ]
+}
   ]
 }

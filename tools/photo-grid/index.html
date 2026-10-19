@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>九宫格拼图</title>
+<style>
+:root {
+  --bg: #E9EDF1;
+  --paper: #F8FAFB;
+  --ink: #17212B;
+  --ink-2: #51606E;
+  --line: #C3CDD6;
+  --edge: #17212B;
+  --yellow: #F5C518;
+  --on-yellow: #17212B;
+  --teal: #0F7C86;
+  --red: #D6453D;
+  --blue: #3A63D8;
+  --radius: 8px;
+  --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131A21;
+    --paper: #1C252E;
+    --ink: #E7ECF1;
+    --ink-2: #98A6B3;
+    --line: #2C3843;
+    --edge: #4A5967;
+    --blue: #7FA0FF;
+    --teal: #3FB5C0;
+    --red: #FF7A70;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 var(--font);
+}
+
+a { color: inherit; }
+:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+/* 按钮：底部有一条硬边，按下时压下去 */
+.btn {
+  font: inherit;
+  font-weight: 600;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: var(--radius);
+  border: 2px solid var(--edge);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-decoration: none;
+  box-shadow: 0 3px 0 var(--edge);
+  transition: transform .08s, box-shadow .08s;
+}
+.btn:active { transform: translateY(3px); box-shadow: 0 0 0 var(--edge); }
+.btn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; transform: none; }
+.btn-primary { background: var(--yellow); color: var(--on-yellow); border-color: #17212B; }
+.btn-danger { color: var(--red); }
+.btn-sm { min-height: 36px; padding: 0 12px; font-size: .9rem; }
+
+/* 分段开关 */
+.seg {
+  display: inline-flex;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--paper);
+}
+.seg button {
+  font: inherit;
+  font-weight: 600;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.seg button + button { border-left: 2px solid var(--edge); }
+.seg button[aria-pressed="true"] { background: var(--yellow); color: var(--on-yellow); }
+
+/* 表单 */
+.field {
+  font: inherit;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+}
+textarea.field { resize: vertical; line-height: 1.5; }
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px 0 10px;
+  border: 2px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+</style>
+<style>
+  .page { max-width: 1060px; margin: 0 auto; padding: calc(14px + env(safe-area-inset-top)) 16px 56px; }
+  .head { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+  .head h1 { margin: 0; font-size: 1.4rem; flex: 1 1 auto; }
+
+  /* 电脑：左边放内容和设置，右边预览固定；手机：依次排 */
+  .layout { display: grid; gap: 20px 24px; align-items: start;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-areas: "a b" "c b"; }
+  .layout.two { grid-template-areas: "a b"; }
+  .A { grid-area: a; } .B { grid-area: b; } .C { grid-area: c; }
+  .B.sticky { position: sticky; top: 16px; }
+  @media (max-width: 820px) {
+    .layout, .layout.two { grid-template-columns: 1fr; grid-template-areas: "a" "b" "c"; }
+    .B.sticky { position: static; }
+  }
+
+  .box { padding: 16px; background: var(--paper); border: 2px solid var(--edge); border-radius: 6px; box-shadow: 4px 4px 0 var(--edge); }
+  .box h2 { margin: 0; font-size: 1rem; }
+  .boxhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+  .count { font-family: var(--mono); font-size: .9rem; color: var(--ink-2); }
+  .hint { margin: 10px 0 0; color: var(--ink-2); font-size: .88rem; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  .btns .btn { flex: 1 1 auto; }
+
+  /* 九个格子 */
+  .slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 480px; }
+  .sw { position: relative; aspect-ratio: 1; }
+  .slot { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; overflow: hidden; display: flex; align-items: center; justify-content: center;
+    font: inherit; color: var(--ink-2); background: var(--bg); border: 2px dashed var(--edge); border-radius: 6px; cursor: pointer; }
+  .slot.filled { border-style: solid; cursor: grab; }
+  .slot .n { font-size: 1.8rem; font-weight: 800; opacity: .3; pointer-events: none; }
+  .slot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+  .slots.contain .slot img { object-fit: contain; background: var(--slotbg, #fff); }
+  .slot .idx { position: absolute; left: 6px; bottom: 6px; min-width: 24px; height: 24px; padding: 0 7px; display: flex; align-items: center; justify-content: center;
+    border-radius: 999px; background: var(--ink); color: var(--bg); font-size: .8rem; font-weight: 700; pointer-events: none; }
+  .rm { position: absolute; top: 6px; right: 6px; z-index: 2; width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center;
+    border: 2px solid var(--edge); border-radius: 50%; background: var(--paper); color: var(--ink); font-size: 1.05rem; font-weight: 800; line-height: 1; cursor: pointer; }
+  .sw.over .slot { outline: 3px solid var(--yellow); outline-offset: 1px; }
+  .over-files { outline: 3px dashed var(--yellow); outline-offset: 3px; }
+
+  /* 预览 */
+  .stage { display: flex; align-items: center; justify-content: center; min-height: 260px; padding: 12px; border: 2px dashed var(--line); border-radius: 6px; background: var(--bg); }
+  #pvCv { display: block; width: 100%; max-width: 336px; height: auto; border: 1px solid var(--line); }
+  #pvEmpty { margin: 0; padding: 0 12px; text-align: center; color: var(--ink-2); }
+  #pvInfo, #sInfo { margin: 10px 0 0; min-height: 1.4em; font-size: .88rem; color: var(--ink-2); text-align: center; }
+
+  /* 设置行 */
+  .row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+  .row:last-child { margin-bottom: 0; }
+  .row > .k { flex: none; width: 4.4em; font-size: .9rem; font-weight: 600; color: var(--ink-2); }
+  .row .seg button { white-space: nowrap; padding: 0 14px; }
+  .row input[type="range"] { flex: 1 1 140px; min-width: 0; height: 32px; accent-color: var(--yellow); }
+  .row output { flex: none; min-width: 3.6em; text-align: right; font-family: var(--mono); font-size: .85rem; color: var(--ink-2); }
+  .row .field { width: auto; }
+  input[type="color"] { width: 44px; height: 36px; padding: 0; border: 2px solid var(--edge); border-radius: 6px; background: none; cursor: pointer; }
+  .box h2 + .row, .box h2 + .hint { margin-top: 12px; }
+
+  /* 拆分 */
+  .drop { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 40px 16px; margin-bottom: 20px; text-align: center;
+    border: 3px dashed var(--edge); border-radius: 8px; background: var(--paper); }
+  .drop .big { margin: 0; font-size: 1.15rem; font-weight: 700; }
+  .drop .sub { margin: 0 0 8px; color: var(--ink-2); font-size: .92rem; }
+  .sgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 520px; }
+  .sc { position: relative; aspect-ratio: 1; border: 2px solid var(--edge); border-radius: 6px; overflow: hidden; background: #fff; }
+  .sc canvas { display: block; width: 100%; height: 100%; }
+  .sc .dl { position: absolute; right: 6px; bottom: 6px; min-height: 32px; padding: 0 10px; font-size: .85rem; box-shadow: 0 2px 0 var(--edge); }
+
+  #toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 12; transform: translateX(-50%);
+    padding: 8px 16px; border-radius: 999px; background: var(--ink); color: var(--bg); font-weight: 600; pointer-events: none; max-width: 90vw; text-align: center; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="head">
+    <a class="back" href="../../">‹ 工具箱</a>
+    <h1>九宫格拼图</h1>
+    <div class="seg" id="tabs" role="group" aria-label="功能">
+      <button type="button" data-tab="merge">拼合：九张 → 一张</button>
+      <button type="button" data-tab="split">拆分：一张 → 九张</button>
+    </div>
+  </div>
+
+  <!-- 拼合 -->
+  <div id="merge">
+    <div class="layout">
+      <section class="box A" id="slotsBox" aria-label="图片位置">
+        <div class="boxhead"><h2>图片位置</h2><span class="count" id="count">0 / 9</span></div>
+        <div class="slots" id="slots"></div>
+        <div class="btns" style="max-width:480px">
+          <button type="button" class="btn btn-primary" id="addMany">批量添加图片</button>
+          <button type="button" class="btn" id="clearAll">清空</button>
+        </div>
+        <p class="hint">可以一次选多张，按选择顺序填进空位；点某一格只替换那一张。电脑上拖动格子可以交换位置，也可以直接把图片拖进来或粘贴。</p>
+      </section>
+
+      <section class="box B sticky" aria-label="预览">
+        <div class="stage">
+          <canvas id="pvCv" hidden aria-label="拼合预览"></canvas>
+          <p id="pvEmpty">先添加图片，这里会实时显示拼合效果。</p>
+        </div>
+        <p id="pvInfo"></p>
+        <div class="btns"><button type="button" class="btn btn-primary" id="dlMerge" disabled>下载拼合图</button></div>
+      </section>
+
+      <section class="box C" aria-label="拼合设置">
+        <h2>拼合设置</h2>
+        <div class="row"><span class="k">间距</span>
+          <input type="range" id="gap" min="0" max="60" step="1" aria-label="间距"><output id="gapO"></output>
+        </div>
+        <div class="row"><span class="k">每格尺寸</span>
+          <input type="range" id="cell" min="400" max="1200" step="40" aria-label="每格尺寸"><output id="cellO"></output>
+        </div>
+        <div class="row"><span class="k">背景色</span><input type="color" id="bg" aria-label="背景色"></div>
+        <div class="row"><span class="k">填充方式</span>
+          <div class="seg" id="fit" role="group" aria-label="填充方式">
+            <button type="button" data-v="crop">居中裁切</button>
+            <button type="button" data-v="contain">完整显示</button>
+          </div>
+        </div>
+        <div class="row"><span class="k">输出格式</span>
+          <div class="seg fmtSeg" role="group" aria-label="输出格式">
+            <button type="button" data-v="jpg">JPG</button>
+            <button type="button" data-v="png">PNG</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- 拆分 -->
+  <div id="split" hidden>
+    <div class="drop" id="drop">
+      <p class="big">把一张图片拖到这里，也可以直接粘贴</p>
+      <p class="sub">会按 3×3 均分成九张正方形图片，适合发九宫格。</p>
+      <button type="button" class="btn btn-primary" id="pickSplit">选择图片</button>
+    </div>
+
+    <div class="layout two" id="splitWork" hidden>
+      <section class="box A" aria-label="拆分结果">
+        <div class="boxhead"><h2>拆分结果</h2></div>
+        <div class="sgrid" id="sgrid"></div>
+        <p id="sInfo"></p>
+      </section>
+      <section class="box B" aria-label="拆分设置">
+        <h2>拆分设置</h2>
+        <div class="row" id="posRow"><span class="k" id="posK">裁剪位置</span>
+          <input type="range" id="pos" min="0" max="100" step="1" aria-label="裁剪位置"><output id="posO"></output>
+        </div>
+        <div class="row"><span class="k">每格尺寸</span>
+          <select id="ssize" class="field" aria-label="每格输出尺寸">
+            <option value="0">原始大小</option>
+            <option value="1080">1080 px</option>
+            <option value="720">720 px</option>
+          </select>
+        </div>
+        <div class="row"><span class="k">输出格式</span>
+          <div class="seg fmtSeg" role="group" aria-label="输出格式">
+            <button type="button" data-v="jpg">JPG</button>
+            <button type="button" data-v="png">PNG</button>
+          </div>
+        </div>
+        <p class="hint" id="posHint"></p>
+        <div class="btns">
+          <button type="button" class="btn btn-primary" id="dlAll">下载全部九张</button>
+          <button type="button" class="btn" id="again">换一张图</button>
+        </div>
+        <p class="hint">会依次下载 9 张图片。如果浏览器询问是否允许下载多个文件，请选择允许。</p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileMany" accept="image/*" multiple hidden>
+<input type="file" id="fileOne" accept="image/*" hidden>
+<input type="file" id="fileSplit" accept="image/*" hidden>
+<div id="toast" hidden></div>
+
+<script>
+/* 工具箱公共小函数。经典脚本，挂在 window.TB 上，不依赖任何库。 */
+(function () {
+  'use strict';
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  var esc = function (s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  };
+
+  // localStorage 在隐私模式、预览里可能抛异常，这里统一兜住
+  var store = {
+    get: function (k, d) {
+      try {
+        var v = localStorage.getItem('tb:' + k);
+        return v == null ? d : JSON.parse(v);
+      } catch (e) { return d; }
+    },
+    set: function (k, v) {
+      try { localStorage.setItem('tb:' + k, JSON.stringify(v)); } catch (e) { /* ignore */ }
+    },
+    del: function (k) {
+      try { localStorage.removeItem('tb:' + k); } catch (e) { /* ignore */ }
+    }
+  };
+
+  var vibrate = function (p) {
+    try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) { /* ignore */ }
+  };
+
+  // 0 .. n-1 的均匀随机整数（无模偏差）
+  var rand = function (n) {
+    if (n <= 1) return 0;
+    var c = window.crypto || window.msCrypto;
+    if (!c || !c.getRandomValues) return Math.floor(Math.random() * n);
+    var lim = Math.floor(4294967296 / n) * n;
+    var buf = new Uint32Array(1), x;
+    do { c.getRandomValues(buf); x = buf[0]; } while (x >= lim);
+    return x % n;
+  };
+
+  var shuffle = function (arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = rand(i + 1), t = arr[i];
+      arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  };
+
+  var safeUrl = function (u) {
+    return /^\s*(javascript|data|vbscript):/i.test(u || '') ? '#' : (u || '#');
+  };
+
+  // 触发浏览器下载一个 Blob
+  var saveBlob = function (blob, name) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1500);
+  };
+
+  // 打包 zip（只存不压，适合已压缩的图片）。items: [{name, blob}]，返回 Promise<Blob>
+  var CRC = (function () {
+    var t = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+    return t;
+  })();
+  var crc32 = function (u8) {
+    var c = 0xFFFFFFFF;
+    for (var i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  };
+  var zip = async function (items) {
+    var enc = new TextEncoder(), parts = [], central = [], offset = 0, d = new Date();
+    var dt = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    var dd = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    for (var i = 0; i < items.length; i++) {
+      var data = new Uint8Array(await items[i].blob.arrayBuffer()), name = enc.encode(items[i].name), crc = crc32(data);
+      var lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint16(10, dt, true); lh.setUint16(12, dd, true); lh.setUint32(14, crc, true);
+      lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, name.length, true);
+      parts.push(lh.buffer, name, data);
+      var ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+      ch.setUint16(12, dt, true); ch.setUint16(14, dd, true); ch.setUint32(16, crc, true);
+      ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, name.length, true);
+      ch.setUint32(42, offset, true);
+      central.push(ch.buffer, name);
+      offset += 30 + name.length + data.length;
+    }
+    var csize = 0;
+    central.forEach(function (b) { csize += b.byteLength; });
+    var end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, items.length, true); end.setUint16(10, items.length, true);
+    end.setUint32(12, csize, true); end.setUint32(16, offset, true);
+    return new Blob(parts.concat(central, [end.buffer]), { type: 'application/zip' });
+  };
+
+  window.TB = { $: $, $$: $$, esc: esc, store: store, vibrate: vibrate, rand: rand, shuffle: shuffle, safeUrl: safeUrl, saveBlob: saveBlob, zip: zip };
+})();
+
+</script>
+<script>
+(function () {
+  'use strict';
+  const $ = TB.$, $$ = TB.$$, esc = TB.esc;
+
+  /* ---------- 设置 ---------- */
+  const DEF = { tab: 'merge', gap: 0, cell: 1080, bg: '#ffffff', fit: 'crop', fmt: 'jpg', pos: 50, ssize: 0 };
+  const cfg = Object.assign({}, DEF, TB.store.get('grid.cfg', {}));
+  const num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v)) ? Math.min(hi, Math.max(lo, Math.round(v))) : d;
+  cfg.tab = cfg.tab === 'split' ? 'split' : 'merge';
+  cfg.gap = num(cfg.gap, 0, 60, DEF.gap);
+  cfg.cell = Math.round(num(cfg.cell, 400, 1200, DEF.cell) / 40) * 40;
+  cfg.bg = (typeof cfg.bg === 'string' && /^#[0-9a-f]{6}$/i.test(cfg.bg)) ? cfg.bg : DEF.bg;
+  cfg.fit = cfg.fit === 'contain' ? 'contain' : 'crop';
+  cfg.fmt = cfg.fmt === 'png' ? 'png' : 'jpg';
+  cfg.pos = num(cfg.pos, 0, 100, DEF.pos);
+  cfg.ssize = [0, 720, 1080].indexOf(cfg.ssize) !== -1 ? cfg.ssize : 0;
+  const save = () => TB.store.set('grid.cfg', cfg);
+
+  const TYPE = () => cfg.fmt === 'png' ? 'image/png' : 'image/jpeg';
+  const EXT = () => cfg.fmt;
+  const stem = name => (name || 'image').replace(/\.[^.]+$/, '') || 'image';
+
+  function toast(t) {
+    const el = $('#toast');
+    el.textContent = t; el.hidden = false;
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => { el.hidden = true; }, 2600);
+  }
+
+  /* ---------- 图片解码 ---------- */
+  async function decode(file) {
+    try {
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      return { src: bmp, width: bmp.width, height: bmp.height, close() { bmp.close(); } };
+    } catch (e) {
+      const url = URL.createObjectURL(file);
+      try {
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        return { src: img, width: img.naturalWidth, height: img.naturalHeight, close() { URL.revokeObjectURL(url); } };
+      } catch (e2) {
+        URL.revokeObjectURL(url);
+        throw new Error('打不开 ' + file.name);
+      }
+    }
+  }
+
+  function toBlob(cv, quality) {
+    return new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error('图片太大，浏览器处理不了，请把每格尺寸调小')), TYPE(), quality));
+  }
+
+  const isImage = f => (f.type && f.type.indexOf('image/') === 0) || /\.(jpe?g|png|webp|gif|bmp|avif|heic|heif)$/i.test(f.name);
+
+  /* ==================================================================
+     拼合
+     ================================================================== */
+  const slots = new Array(9).fill(null);   // {file, name, small(canvas ≤800px), thumb(dataURL)}
+
+  function shrink(d, max) {
+    const s = Math.min(1, max / Math.max(d.width, d.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(d.width * s)); c.height = Math.max(1, Math.round(d.height * s));
+    const x = c.getContext('2d');
+    x.imageSmoothingQuality = 'high';
+    x.drawImage(d.src, 0, 0, c.width, c.height);
+    return c;
+  }
+  function thumbOf(small) {
+    const s = Math.min(1, 360 / Math.max(small.width, small.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(small.width * s)); c.height = Math.max(1, Math.round(small.height * s));
+    const x = c.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+    x.drawImage(small, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.82);
+  }
+
+  async function makeSlot(file) {
+    const d = await decode(file);
+    try {
+      const small = shrink(d, 800);
+      return { file: file, name: file.name, small: small, thumb: thumbOf(small) };
+    } finally { d.close(); }
+  }
+
+  async function addFiles(list, replaceIdx) {
+    const files = Array.from(list || []).filter(isImage);
+    if (!files.length) { if (list && list.length) toast('这不是图片文件'); return; }
+    let targets;
+    if (replaceIdx !== undefined) targets = [replaceIdx];
+    else {
+      targets = [];
+      slots.forEach((s, i) => { if (!s) targets.push(i); });
+      if (!targets.length) { toast('九个位置都满了，先清空，或点某一格替换'); return; }
+      if (files.length > targets.length) toast('只有 ' + targets.length + ' 个空位，多出的 ' + (files.length - targets.length) + ' 张已忽略');
+    }
+    for (let k = 0; k < targets.length && k < files.length; k++) {
+      try { slots[targets[k]] = await makeSlot(files[k]); }
+      catch (e) { toast(e.message || '图片打不开'); }
+      renderSlots(); renderPreview();
+    }
+  }
+
+  function renderSlots() {
+    const box = $('#slots');
+    box.classList.toggle('contain', cfg.fit === 'contain');
+    box.style.setProperty('--slotbg', cfg.bg);
+    box.innerHTML = slots.map((s, i) => {
+      const label = s ? '第 ' + (i + 1) + ' 格：' + esc(s.name) + '，点击替换' : '第 ' + (i + 1) + ' 格，空，点击添加图片';
+      return '<div class="sw" data-i="' + i + '">' +
+        '<button type="button" class="slot' + (s ? ' filled' : '') + '" data-i="' + i + '"' + (s ? ' draggable="true"' : '') + ' aria-label="' + label + '">' +
+        (s ? '<img alt="" draggable="false" src="' + s.thumb + '"><span class="idx">' + (i + 1) + '</span>' : '<span class="n">' + (i + 1) + '</span>') +
+        '</button>' +
+        (s ? '<button type="button" class="rm" data-rm="' + i + '" aria-label="移除第 ' + (i + 1) + ' 格">✕</button>' : '') +
+        '</div>';
+    }).join('');
+    const n = slots.filter(Boolean).length;
+    $('#count').textContent = n + ' / 9';
+    $('#dlMerge').disabled = n === 0;
+    $('#clearAll').disabled = n === 0;
+  }
+
+  /* 把九格画到 ctx 上：getSrc(i) → {src,w,h}；k 为缩放系数 */
+  function drawCell(ctx, src, sw, sh, x, y, w) {
+    if (cfg.fit === 'crop') {
+      const s = Math.min(sw, sh);
+      ctx.drawImage(src, (sw - s) / 2, (sh - s) / 2, s, s, x, y, w, w);
+    } else {
+      const sc = Math.min(w / sw, w / sh), dw = sw * sc, dh = sh * sc;
+      ctx.drawImage(src, 0, 0, sw, sh, x + (w - dw) / 2, y + (w - dh) / 2, dw, dh);
+    }
+  }
+
+  const mTotal = () => cfg.cell * 3 + cfg.gap * 2;
+
+  let pvQueued = false;
+  function renderPreview() {
+    if (pvQueued) return;
+    pvQueued = true;
+    requestAnimationFrame(() => {
+      pvQueued = false;
+      const n = slots.filter(Boolean).length;
+      $('#pvCv').hidden = n === 0; $('#pvEmpty').hidden = n !== 0;
+      if (!n) { $('#pvInfo').textContent = ''; return; }
+      const PV = 720, total = mTotal(), k = PV / total, cv = $('#pvCv');
+      cv.width = cv.height = PV;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = cfg.bg; ctx.fillRect(0, 0, PV, PV);
+      ctx.imageSmoothingQuality = 'high';
+      slots.forEach((s, i) => {
+        if (!s) return;
+        const x = Math.round((i % 3) * (cfg.cell + cfg.gap) * k), y = Math.round(Math.floor(i / 3) * (cfg.cell + cfg.gap) * k);
+        drawCell(ctx, s.small, s.small.width, s.small.height, x, y, Math.round(cfg.cell * k));
+      });
+      $('#pvInfo').textContent = total + '×' + total + ' px · ' + cfg.fmt.toUpperCase() + (n < 9 ? ' · 还缺 ' + (9 - n) + ' 张，空位会显示背景色' : '');
+    });
+  }
+
+  async function exportMerge() {
+    const btn = $('#dlMerge');
+    btn.disabled = true; const old = btn.textContent; btn.textContent = '正在生成…';
+    try {
+      const total = mTotal(), cv = document.createElement('canvas');
+      cv.width = cv.height = total;
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = cfg.bg; ctx.fillRect(0, 0, total, total);
+      ctx.imageSmoothingQuality = 'high';
+      for (let i = 0; i < 9; i++) {
+        const s = slots[i];
+        if (!s) continue;
+        const d = await decode(s.file);
+        try { drawCell(ctx, d.src, d.width, d.height, (i % 3) * (cfg.cell + cfg.gap), Math.floor(i / 3) * (cfg.cell + cfg.gap), cfg.cell); }
+        finally { d.close(); }
+      }
+      const blob = await toBlob(cv, 0.95);
+      cv.width = cv.height = 0;
+      TB.saveBlob(blob, 'grid-merged.' + EXT());
+      toast('已下载');
+    } catch (e) {
+      toast(e.message || '生成失败');
+    }
+    btn.textContent = old;
+    btn.disabled = slots.every(s => !s);
+  }
+
+  /* 格子上的点击、移除、拖动交换 */
+  let pickIdx = -1, dragIdx = -1;
+  $('#slots').addEventListener('click', e => {
+    const rm = e.target.closest('[data-rm]');
+    if (rm) { slots[+rm.getAttribute('data-rm')] = null; renderSlots(); renderPreview(); return; }
+    const b = e.target.closest('.slot');
+    if (b) { pickIdx = +b.getAttribute('data-i'); $('#fileOne').click(); }
+  });
+  $('#slots').addEventListener('dragstart', e => {
+    const b = e.target.closest('.slot.filled');
+    if (!b) return;
+    dragIdx = +b.getAttribute('data-i');
+    e.dataTransfer.setData('text/plain', String(dragIdx));
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  $('#slots').addEventListener('dragover', e => {
+    if (dragIdx < 0) return;
+    const w = e.target.closest('.sw');
+    if (!w) return;
+    e.preventDefault();
+    $$('#slots .sw.over').forEach(x => { if (x !== w) x.classList.remove('over'); });
+    w.classList.add('over');
+  });
+  $('#slots').addEventListener('drop', e => {
+    if (dragIdx < 0) return;
+    const w = e.target.closest('.sw');
+    if (!w) return;
+    e.preventDefault();
+    const to = +w.getAttribute('data-i'), from = dragIdx;
+    dragIdx = -1;
+    if (to !== from) { const t = slots[from]; slots[from] = slots[to]; slots[to] = t; }
+    renderSlots(); renderPreview();
+  });
+  $('#slots').addEventListener('dragend', () => { dragIdx = -1; $$('#slots .sw.over').forEach(x => x.classList.remove('over')); });
+
+  $('#addMany').addEventListener('click', () => $('#fileMany').click());
+  $('#fileMany').addEventListener('change', e => { const f = Array.from(e.target.files); e.target.value = ''; addFiles(f); });
+  $('#fileOne').addEventListener('change', e => { const f = Array.from(e.target.files); e.target.value = ''; if (f.length && pickIdx >= 0) addFiles(f.slice(0, 1), pickIdx); });
+  $('#clearAll').addEventListener('click', () => { slots.fill(null); renderSlots(); renderPreview(); });
+  $('#dlMerge').addEventListener('click', exportMerge);
+
+  /* 拼合设置 */
+  $('#gap').addEventListener('input', e => { cfg.gap = +e.target.value; $('#gapO').textContent = cfg.gap + ' px'; save(); renderPreview(); });
+  $('#cell').addEventListener('input', e => { cfg.cell = +e.target.value; $('#cellO').textContent = cfg.cell + ' px'; save(); renderPreview(); });
+  $('#bg').addEventListener('input', e => { cfg.bg = e.target.value; save(); $('#slots').style.setProperty('--slotbg', cfg.bg); renderPreview(); });
+  $('#fit').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { cfg.fit = b.getAttribute('data-v'); save(); sync(); renderSlots(); renderPreview(); } });
+
+  /* ==================================================================
+     拆分
+     ================================================================== */
+  const SP = { d: null, name: '', built: false };
+  const PREV = 260;
+
+  function geo() {
+    const w = SP.d.width, h = SP.d.height, side = Math.min(w, h);
+    const ox = w > h ? Math.round((w - side) * cfg.pos / 100) : 0;
+    const oy = h > w ? Math.round((h - side) * cfg.pos / 100) : 0;
+    return { w: w, h: h, side: side, ox: ox, oy: oy, cell: Math.max(1, Math.floor(side / 3)) };
+  }
+
+  function buildSplitDom() {
+    $('#sgrid').innerHTML = Array.from({ length: 9 }, (_, i) =>
+      '<div class="sc"><canvas width="' + PREV + '" height="' + PREV + '" aria-label="第 ' + (i + 1) + ' 张"></canvas>' +
+      '<button type="button" class="btn dl" data-dl="' + i + '">下载 ' + (i + 1) + '</button></div>').join('');
+  }
+
+  function drawSplit() {
+    if (!SP.d) return;
+    const g = geo();
+    $$('#sgrid canvas').forEach((cv, i) => {
+      const x = cv.getContext('2d');
+      x.imageSmoothingQuality = 'high';
+      x.drawImage(SP.d.src, g.ox + (i % 3) * g.cell, g.oy + Math.floor(i / 3) * g.cell, g.cell, g.cell, 0, 0, PREV, PREV);
+    });
+    const out = cfg.ssize || g.cell;
+    $('#sInfo').textContent = '原图 ' + g.w + '×' + g.h + '，取 ' + g.side + '×' + g.side + ' 的正方形，每张输出 ' + out + '×' + out + ' px';
+    const portrait = g.h > g.w, square = g.w === g.h;
+    $('#posRow').hidden = square;
+    $('#posK').textContent = portrait ? '上下位置' : '左右位置';
+    $('#posO').textContent = cfg.pos + '%';
+    $('#posHint').textContent = square ? '这张图是正方形，会完整均分成九张。' : '图片不是正方形，只会取其中一个正方形部分，拖动“' + (portrait ? '上下' : '左右') + '位置”可以选取哪一段。';
+  }
+
+  async function loadSplit(file) {
+    if (!file || !isImage(file)) { toast('这不是图片文件'); return; }
+    try {
+      const d = await decode(file);
+      if (SP.d) SP.d.close();
+      SP.d = d; SP.name = stem(file.name);
+      if (!SP.built) { buildSplitDom(); SP.built = true; }
+      $('#drop').hidden = true; $('#splitWork').hidden = false;
+      sync(); drawSplit();
+    } catch (e) { toast(e.message || '图片打不开'); }
+  }
+
+  async function exportCell(i) {
+    const g = geo(), out = cfg.ssize || g.cell, cv = document.createElement('canvas');
+    cv.width = cv.height = out;
+    const x = cv.getContext('2d');
+    if (cfg.fmt === 'jpg') { x.fillStyle = '#fff'; x.fillRect(0, 0, out, out); }
+    x.imageSmoothingQuality = 'high';
+    x.drawImage(SP.d.src, g.ox + (i % 3) * g.cell, g.oy + Math.floor(i / 3) * g.cell, g.cell, g.cell, 0, 0, out, out);
+    const b = await toBlob(cv, 0.95);
+    cv.width = cv.height = 0;
+    return b;
+  }
+
+  $('#sgrid').addEventListener('click', async e => {
+    const b = e.target.closest('[data-dl]');
+    if (!b || !SP.d) return;
+    const i = +b.getAttribute('data-dl');
+    try { TB.saveBlob(await exportCell(i), SP.name + '-' + (i + 1) + '.' + EXT()); } catch (err) { toast(err.message); }
+  });
+
+  // 依次下载九张；每张之间留一点间隔，否则浏览器会把连续的下载当成骚扰拦掉
+  $('#dlAll').addEventListener('click', async () => {
+    if (!SP.d) return;
+    const btn = $('#dlAll'), old = btn.textContent;
+    btn.disabled = true;
+    try {
+      for (let i = 0; i < 9; i++) {
+        btn.textContent = '正在下载 ' + (i + 1) + ' / 9…';
+        TB.saveBlob(await exportCell(i), SP.name + '-' + (i + 1) + '.' + EXT());
+        await new Promise(r => setTimeout(r, 500));
+      }
+      toast('九张都已下载');
+    } catch (e) { toast(e.message || '下载失败'); }
+    btn.textContent = old; btn.disabled = false;
+  });
+
+  $('#again').addEventListener('click', () => {
+    if (SP.d) { SP.d.close(); SP.d = null; }
+    $('#splitWork').hidden = true; $('#drop').hidden = false;
+  });
+  $('#pickSplit').addEventListener('click', () => $('#fileSplit').click());
+  $('#fileSplit').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; loadSplit(f); });
+
+  let posQueued = false;
+  $('#pos').addEventListener('input', e => {
+    cfg.pos = +e.target.value; save();
+    if (posQueued) return;
+    posQueued = true;
+    requestAnimationFrame(() => { posQueued = false; drawSplit(); });
+  });
+  $('#ssize').addEventListener('change', e => { cfg.ssize = +e.target.value; save(); drawSplit(); });
+
+  /* ==================================================================
+     公共：选项卡、输出格式、拖放、粘贴
+     ================================================================== */
+  function sync() {
+    $$('#tabs button').forEach(b => b.setAttribute('aria-pressed', String(b.getAttribute('data-tab') === cfg.tab)));
+    $('#merge').hidden = cfg.tab !== 'merge';
+    $('#split').hidden = cfg.tab !== 'split';
+    $('#gap').value = cfg.gap; $('#gapO').textContent = cfg.gap + ' px';
+    $('#cell').value = cfg.cell; $('#cellO').textContent = cfg.cell + ' px';
+    $('#bg').value = cfg.bg;
+    $$('#fit button').forEach(b => b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === cfg.fit)));
+    $$('.fmtSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === cfg.fmt)));
+    $('#pos').value = cfg.pos; $('#posO').textContent = cfg.pos + '%';
+    $('#ssize').value = String(cfg.ssize);
+  }
+
+  $('#tabs').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    cfg.tab = b.getAttribute('data-tab'); save(); sync();
+  });
+  $$('.fmtSeg').forEach(seg => seg.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    cfg.fmt = b.getAttribute('data-v'); save(); sync(); renderPreview();
+    if (SP.d) drawSplit();
+  }));
+
+  const route = files => {
+    if (cfg.tab === 'merge') addFiles(files);
+    else { const f = Array.from(files).filter(isImage)[0]; if (f) loadSplit(f); else if (files.length) toast('这不是图片文件'); }
+  };
+  const hasFiles = e => e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf('Files') !== -1;
+  const zone = () => cfg.tab === 'merge' ? $('#slotsBox') : $('#drop');
+  let depth = 0;
+  window.addEventListener('dragenter', e => { if (!hasFiles(e)) return; e.preventDefault(); depth++; zone().classList.add('over-files'); });
+  window.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('dragleave', e => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) zone().classList.remove('over-files'); });
+  window.addEventListener('drop', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); depth = 0;
+    $$('.over-files').forEach(x => x.classList.remove('over-files'));
+    route(e.dataTransfer.files);
+  });
+  document.addEventListener('paste', e => {
+    const fs = [];
+    Array.from((e.clipboardData && e.clipboardData.items) || []).forEach(it => { if (it.kind === 'file') { const f = it.getAsFile(); if (f) fs.push(f); } });
+    if (!fs.length) return;
+    e.preventDefault();
+    route(fs.map((f, i) => (f.name && f.name !== 'image.png') ? f : new File([f], '粘贴的图片' + (i + 1) + '.png', { type: f.type })));
+  });
+
+  /* ---------- 启动 ---------- */
+  sync();
+  renderSlots();
+  renderPreview();
+})();
+</script>
+</body>
+</html>
